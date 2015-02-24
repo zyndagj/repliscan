@@ -1,7 +1,17 @@
 # reptiming_logFC
 Pipeline for logfold reptiming enrichment.
 ## Dependencies
-All binaries from these programs need to be installed on the user's path.
-- wavelets http://staff.washington.edu/dbp/WMTSA/NEPH/wavelets.html
-- samtools
-- bedtools
+The following binaries need to exist on the user's PATH:
+1. bedtools - [https://github.com/arq5x/bedtools2]
+   ### From Stampede/Lonestar
+   ```
+   module load bedtools
+   ```
+2. samtools
+   ### From Stampede/Lonestar
+   ```
+   module load samtools
+   ```
+3. wavelets - http://staff.washington.edu/dbp/WMTSA/NEPH/wavelets.html
+## Input
+Position-sorted bam files
