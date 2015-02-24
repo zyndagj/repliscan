@@ -39,7 +39,14 @@ The following binaries need to exist on the user's PATH:
 |  |BAM List File| A text file listing bams for input|
 
 ### Bam List File
-Each line of the bam list file needs to contain a path to a bam file and a short name for the file separated by a tab. For example:
+Each line of the bam list file needs to contain a path to a bam file and a short name for the file separated by a **tab**. For example:
 ```
 example_sorted.bam	EX
+```
+The first line of this file needs to be the control (G1). All subsequent lines need to be listed sequentially according to experimental time. An example file would be:
+```
+G1_sorted.bam	G1
+ES_sorted.bam	ES
+MS_sorted.bam	MS
+LS_sorted.bam	LS
 ```
