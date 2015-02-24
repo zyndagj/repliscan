@@ -25,21 +25,22 @@ The following binaries need to exist on the user's PATH:
    $ cd ../bin
    $ cp wavelets [to somewhere on bin path]
    ```
-## Running `logfold_rep.py`
 
-`usage: logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
+## Running the Pipeline
+
+**usage:** `logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
 
 ### Required Arguments
 
 | Flag | Option | Description |
-|:----:|--------|-------------|
-|-F|Fasta File|The fasta file used for alignment|
-|-L|Smoothing Level|The level of smoothing to use [1,5]|
-|-S|Window Size|The size of each window in the bedgraphs|
-|  |BAM List File| A text file listing bams for input|
+|:----:|:------:|-------------|
+|-F|FASTA|The fasta file used for alignment|
+|-L|INT|The level of smoothing to use [1,5] (Default: 2)|
+|-S|INT|The size of each window in the bedgraphs (Default: 500)|
+|  |TXT| A text file listing bams for input|
 
-### Bam List File
-Each line of the bam list file needs to contain a path to a bam file and a short name for the file separated by a **tab**. For example:
+### Input TXT
+Each line of the text file needs to contain a path to a bam file and a short name for the file separated by a **tab**. For example:
 ```
 example_sorted.bam	EX
 ```
