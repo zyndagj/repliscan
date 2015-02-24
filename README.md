@@ -2,12 +2,15 @@
 Pipeline for logfold reptiming enrichment.
 ## Dependencies
 The following binaries need to exist on the user's PATH:
+
 1. bedtools - [https://github.com/arq5x/bedtools2]
+   
    ### From Stampede/Lonestar
    ```
    module load bedtools
    ```
-2. samtools
+2. samtools - [https://github.com/samtools/samtools]
+   
    ### From Stampede/Lonestar
    ```
    module load samtools
