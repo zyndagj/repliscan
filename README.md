@@ -29,7 +29,7 @@ The following binaries need to exist on the user's PATH:
 ## Running the Pipeline
 
 ### Usage
-`logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
+`python logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
 
 ### Required Arguments
 
