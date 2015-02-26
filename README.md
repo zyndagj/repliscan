@@ -56,8 +56,8 @@ LS_sorted.bam	LS
 ## Output
 | File | Description |
 |:----:|-------------|
-|*.bedgraph|Bedgraph produced from corresponding bam|
-|*_logFC.bedgraph|Bedgraph of signal after dividing control and performing log2 transform|
-|*_logFC_*.smooth.bedgraph|Smoothed using specified level of Haar wavelet|
-|*_logFC_*.smooth.gff3|GFF showing positive regions|
-|logFC_segmentation.gff3| Segmentation GFF|
+|`*.bedgraph`|Bedgraph produced from corresponding bam|
+|`*_logFC.bedgraph`|Bedgraph of signal after dividing control and performing log2 transform|
+|`*_logFC_*.smooth.bedgraph`|Smoothed using specified level of Haar wavelet|
+|`*_logFC_*.smooth.gff3`|GFF showing positive regions|
+|`logFC_segmentation.gff3`| Segmentation GFF|
