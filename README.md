@@ -28,7 +28,8 @@ The following binaries need to exist on the user's PATH:
 
 ## Running the Pipeline
 
-**usage:** `logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
+### Usage
+`logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
 
 ### Required Arguments
 
@@ -51,3 +52,12 @@ ES_sorted.bam	ES
 MS_sorted.bam	MS
 LS_sorted.bam	LS
 ```
+
+## Output
+| File | Description |
+|:----:|-------------|
+|*.bedgraph|Bedgraph produced from corresponding bam|
+|*_logFC.bedgraph|Bedgraph of signal after dividing control and performing log2 transform|
+|*_logFC_*.smooth.bedgraph|Smoothed using specified level of Haar wavelet|
+|*_logFC_*.smooth.gff3|GFF showing positive regions|
+|logFC_segmentation.gff3| Segmentation GFF|

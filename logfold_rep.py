@@ -6,43 +6,58 @@ import argparse
 import numpy as np
 from multiprocessing import Pool, cpu_count
 from glob import glob
+import gc
+from copy import deepcopy
 
 myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 zero = 0.0004
 
+def printMem():
+	mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_AVPHYS_PAGES')  # e.g. 4015976448
+	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
+	print "Memory:",mem_gib
+
 def run_logFC(fList):
 	beds = map(lambda y: y[1]+".bedgraph", fList)
-	print len(beds), beds
-	vals = []
-	print "Parsing Files"
-	locations, vals = processFiles(beds)
-	normVals = normalize(vals)
-	del vals
-	for bIndex in xrange(1,len(beds)):
-		outName = fList[bIndex][1]+"_logFC.bedgraph"
-		if not os.path.exists(outName):
-			print "Making %s"%(outName)
-			OF = open(outName,'w')
-			subV = (normVals[bIndex,:]+1)/(normVals[0,:]+1)
-			lVals = np.log2(subV)
-			for i in xrange(len(locations)):
-				outStr = '\t'.join(map(str, locations[i]+[lVals[i]]))
-				OF.write(outStr+'\n')
-			OF.close()
+	if not os.path.exists(fList[1][1]+"_logFC.bedgraph"):
+		print "Making LogFold Files From:", beds
+		locations, vals = processFiles(beds)
+		gc.collect()
+		naVals = np.array(vals)
+		del vals
+		gc.collect()
+		normVals = normalize(naVals)
+		for bIndex in xrange(1,len(beds)):
+			outName = fList[bIndex][1]+"_logFC.bedgraph"
+			if not os.path.exists(outName):
+				print "Making %s"%(outName)
+				OF = open(outName,'w')
+				subV = (normVals[bIndex,:]+1)/(normVals[0,:]+1)
+				lVals = np.log2(subV)
+				for i in xrange(len(locations)):
+					outStr = '\t'.join(map(str, locations[i]+[lVals[i]]))
+					OF.write(outStr+'\n')
+				OF.close()
+		del subV
+		del lVals
+		del locations
+		del normVals
+	gc.collect()
 
 def smooth(level, fList, chromDict):
 	beds = map(lambda y: y[1]+"_logFC.bedgraph", fList[1:])
 	print "Smoothing:",beds
 	for bed in beds:
 		outFile = '%s_%i.smooth.bedgraph'%(bed.rstrip('.bedgraph'),level)
-		os.system('rm %s'%(outFile))
-		for chr in chromDict:
-			os.system('grep "^%s\t" %s | cut -f 4 > tmp.val' % (chr, bed))
-			os.system('grep "^%s\t" %s | cut -f 1-3 > tmp.loc'%(chr, bed))
-			os.system('wavelets --level %i --to-stdout --boundary reflected --filter Haar tmp.val > tmp.smooth'%(level))
-			os.system('paste tmp.loc tmp.smooth >> %s'%(outFile))
-	os.system('rm tmp.val tmp.loc tmp.smooth')
+		if not os.path.exists(outFile):
+			for chr in chromDict:
+				os.system('grep "^%s\t" %s | cut -f 4 > tmp.val' % (chr, bed))
+				os.system('grep "^%s\t" %s | cut -f 1-3 > tmp.loc'%(chr, bed))
+				os.system('wavelets --level %i --to-stdout --boundary reflected --filter Haar tmp.val > tmp.smooth'%(level))
+				os.system('paste tmp.loc tmp.smooth >> %s'%(outFile))
+				os.system('rm tmp.val tmp.loc tmp.smooth')
+	gc.collect()
 
 def geometricMean(M):
 	'''
@@ -81,7 +96,8 @@ def sizeFactors(npVals):
 		raise ArithmeticError("Negative values in matrix")
 	piArray = geometricMean(npVals)
 	gZero = piArray > 0
-	return np.median(npVals[:,gZero]/piArray[gZero], axis=1)
+	sf = np.median(npVals[:,gZero]/piArray[gZero], axis=1)
+	return sf
 
 def normalize(vals):
 	'''
@@ -92,22 +108,29 @@ def normalize(vals):
 		   [ 2.53,  3.16,  3.79]])
 	'''
 	sf = sizeFactors(vals)
-	return np.array(vals/np.matrix(sf).T)
+	nA = np.array(vals/np.matrix(sf).T)
+	return nA
 
 def processFiles(files):
+	p = Pool(len(files))
+	ret = p.map(parseBG, files)
 	vals = []
-	p = Pool(cpu_count())
-	for l,v in p.map(parseBG, files):
-		vals.append(v)
-	return l, np.array(vals)
+	for i in xrange(len(ret)):
+		vals.append(deepcopy(ret[i][1]))
+	locations = deepcopy(ret[0][0])
+	del ret
+	p.close()
+	p.join()
+	gc.collect()
+	return (locations, np.array(vals,dtype=np.float32))
 
 def parseBG(inFile):
 	lines = open(inFile,'r').readlines()
 	tmp = map(lambda y: y.rstrip('\n').split('\t'), lines)
-	locs = map(lambda y: y[:3], tmp)
-	vals = np.array(map(lambda y: np.float(y[3]), tmp))
+	locs = tuple(map(lambda y: y[:3], tmp))
+	vals = np.array(map(lambda y: np.float(y[3]), tmp), dtype=np.float32)
 	#vals[vals < 2] = 0
-	return locs, vals
+	return (locs, vals)
 
 def readFAI(inFile):
 	'''
@@ -141,7 +164,7 @@ def makeBedgraph(fList, fasta, size):
 		bg = prefix+'.bedgraph'
 		if not os.path.exists(bg):
 			print "Generating intersect for %s"%(bam)
-			os.system("bedtools intersect -a %s -b %s -c -sorted > %s"%(bed,bam,bg))
+			os.system("bedtools bamtobed -i %s | cut -f 1-3 | sort -S 20G -k1,1 -k2,2n | bedtools intersect -a %s -b stdin -c -sorted > %s"%(bam,bed,bg))
 
 def main():
 	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files. The main input is a text file that contains a list of bam files. The first line is used as the control, or input.")
@@ -157,11 +180,11 @@ def main():
 	fList = parseIN(args.infile)
 	makeBedgraph(fList, args.F, args.S)
 	chromDict = readFAI(fai)
-	#run_logFC(fList)
-	#for i in range(1,args.L+1):
-	#	smooth(i, fList, chromDict)
+	run_logFC(fList)
+	smooth(args.L, fList, chromDict)
+	gc.collect()
 	makeGFF(fList, chromDict, args.L, args.S)
-	sys.exit()
+	print "Done"
 
 def parseLocations(locations):
 	ctmp = ""
@@ -187,11 +210,9 @@ def makeGFF(fList, chromDict, level, S):
 		open("logFC_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
 	print "Parsing :",beds
 	locations, vals = processFiles(beds)
-	print "Done"
 	locDict = parseLocations(locations)
 	for chrom in sortedChroms:
 		s,e = locDict[chrom]
-		print chrom
 		tmpLoc = locations[s:e]
 		maskM = np.zeros((len(names),len(tmpLoc)),dtype=np.bool)
 		for i in xrange(len(beds)):
