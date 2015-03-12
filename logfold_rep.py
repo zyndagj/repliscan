@@ -46,12 +46,13 @@ def run_logFC(fList):
 	gc.collect()
 
 def smooth(level, fList, chromDict):
+	sortedChroms = sorted(chromDict.keys()[:])
 	beds = map(lambda y: y[1]+"_logFC.bedgraph", fList[1:])
 	print "Smoothing:",beds
 	for bed in beds:
 		outFile = '%s_%i.smooth.bedgraph'%(bed.rstrip('.bedgraph'),level)
 		if not os.path.exists(outFile):
-			for chr in chromDict:
+			for chr in sortedChroms:
 				os.system('grep "^%s\t" %s | cut -f 4 > tmp.val' % (chr, bed))
 				os.system('grep "^%s\t" %s | cut -f 1-3 > tmp.loc'%(chr, bed))
 				os.system('wavelets --level %i --to-stdout --boundary reflected --filter Haar tmp.val > tmp.smooth'%(level))
@@ -228,8 +229,8 @@ def makeGFF(fList, chromDict, level, S):
 				#OF.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%04d;color=%s;\n" % (locations[i][s][0], int(locations[i][s][1])+1, locations[i][e][2], count, myColors[i]))
 			OF.close()
 		OS = open('logFC_segmentation.gff3','a')
-		setSigI = set(range(3))
-		for s in powerSet(range(3)):
+		setSigI = set(range(len(names)))
+		for s in powerSet(range(len(names))):
 			setS = set(s)
 			tA = np.ones(maskM.shape[1], dtype=np.bool)
 			for i in s: #intersection
