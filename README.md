@@ -36,7 +36,7 @@ The following binaries need to exist on the user's PATH:
 | Flag | Option | Description |
 |:----:|:------:|-------------|
 |-F|FASTA|The fasta file used for alignment|
-|-L|INT|The level of smoothing to use [1,5] (Default: 2)|
+|-L|INT|The level of smoothing to use \[1,5\] \(Default: 2\)|
 |-S|INT|The size of each window in the bedgraphs (Default: 500)|
 |  |TXT| A text file listing bams for input|
 
