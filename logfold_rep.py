@@ -154,13 +154,15 @@ def parseIN(inFile):
 
 def makeBedgraph(fList, fasta, size):
 	fai = fasta+".fai"
-	bed = fasta+".bed"
+	bed = "%s.%i.bed"%(fasta,size)
 	if not os.path.exists(fai):
 		print "Making fai index"
 		os.system("samtools faidx %s"%(fasta))
+	else: rint "%s exists already"%(fai)
 	if not os.path.exists(bed):
-		print "Making 500bp window bed"
-		os.system("bedtools makewindows -g %s -w %i | sort -S 10G -k1,1 -k2,2n > %s"%(fai,size,bed))
+		print "Making %ibp window bed"%(size)
+		os.system("bedtools makewindows -g %s -w %i | sort -S 20G -k1,1 -k2,2n > %s"%(fai,size,bed))
+	else: print "%s exists already"%(bed)
 	for bam, prefix in fList:
 		bg = prefix+'.bedgraph'
 		if not os.path.exists(bg):
