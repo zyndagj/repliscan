@@ -158,7 +158,7 @@ def makeBedgraph(fList, fasta, size):
 	if not os.path.exists(fai):
 		print "Making fai index"
 		os.system("samtools faidx %s"%(fasta))
-	else: rint "%s exists already"%(fai)
+	else: print "%s exists already"%(fai)
 	if not os.path.exists(bed):
 		print "Making %ibp window bed"%(size)
 		os.system("bedtools makewindows -g %s -w %i | sort -S 20G -k1,1 -k2,2n > %s"%(fai,size,bed))
@@ -173,7 +173,7 @@ def main():
 	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files. The main input is a text file that contains a list of bam files. The first line is used as the control, or input.")
 	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
 	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
-	parser.add_argument("-L",metavar='INT', help="Smoothing level", default=2, type=int)
+	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	args = parser.parse_args()
 	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
