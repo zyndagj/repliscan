@@ -8,6 +8,7 @@ from multiprocessing import Pool, cpu_count
 from glob import glob
 import gc
 from copy import deepcopy
+from array import array
 
 myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
@@ -18,32 +19,75 @@ def printMem():
 	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
 	print "Memory:",mem_gib
 
-def run_logFC(fList):
+def run_logFC(fList, thresh=2.5):
 	beds = map(lambda y: y[1]+".bedgraph", fList)
 	if not os.path.exists(fList[1][1]+"_logFC.bedgraph"):
 		print "Making LogFold Files From:", beds
-		locations, vals = processFiles(beds)
+		L, naVals = processFiles(beds)
 		gc.collect()
-		naVals = np.array(vals)
-		del vals
-		gc.collect()
+		threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
 		normVals = normalize(naVals)
 		for bIndex in xrange(1,len(beds)):
 			outName = fList[bIndex][1]+"_logFC.bedgraph"
 			if not os.path.exists(outName):
 				print "Making %s"%(outName)
 				OF = open(outName,'w')
-				subV = (normVals[bIndex,:]+1)/(normVals[0,:]+1)
+				subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
 				lVals = np.log2(subV)
-				for i in xrange(len(locations)):
-					outStr = '\t'.join(map(str, locations[i]+[lVals[i]]))
-					OF.write(outStr+'\n')
+				for i in xrange(len(L[0])):
+					outStr = '%s\t%i\t%i\t%.4f\n' % (L[0][i], L[1][i], L[2][i], lVals[i])
+					#outStr = '\t'.join(map(str, locations[i]+[lVals[i]]))
+					OF.write(outStr)
 				OF.close()
-		del subV
-		del lVals
-		del locations
-		del normVals
+		del subV, lVals, L, normVals
 	gc.collect()
+
+def threshVals(vals, thresh):
+	lgz = vals > 0
+	minVal = np.percentile(vals[lgz], thresh)
+	lmin = np.logical_and(vals < minVal, lgz)
+	vals[lmin] = minVal
+
+def normalize(vals):
+	'''
+	Normalize the counts using DESeq's method
+
+	>>> np.round(normalize(np.array([[1,2,3],[4,5,6]])),2)
+	array([[ 1.58,  3.16,  4.74],
+		   [ 2.53,  3.16,  3.79]])
+	'''
+	sf = sizeFactors(vals)
+	nA = np.array(vals/np.matrix(sf).T)
+	return nA
+
+def processFiles(files):
+	p = Pool(12)
+	vals = []
+	for i in p.imap(parseVals, files):
+		vals.append(i)
+	p.close()
+	p.join()
+	del p
+	gc.collect()
+	return (parseLocs(files[0]), np.array(vals,dtype=np.float32))
+
+def parseLocs(inFile):
+	chroms = []
+	starts = array('I',[])
+	ends = array('I',[])
+	for line in open(inFile,'r'):
+		tmp = line.split('\t')
+		chroms.append(tmp[0])
+		starts.append(int(tmp[1]))
+		ends.append(int(tmp[2]))
+	return (chroms, starts, ends)
+
+def parseVals(inFile):
+	vals = array('f',[])
+	for line in open(inFile,'r'):
+		tmp = line.rstrip('\n').split('\t')
+		vals.append(float(tmp[3]))
+	return vals
 
 def smooth(level, fList, chromDict):
 	sortedChroms = sorted(chromDict.keys()[:])
@@ -99,39 +143,6 @@ def sizeFactors(npVals):
 	gZero = piArray > 0
 	sf = np.median(npVals[:,gZero]/piArray[gZero], axis=1)
 	return sf
-
-def normalize(vals):
-	'''
-	Normalize the counts using DESeq's method
-
-	>>> np.round(normalize(np.array([[1,2,3],[4,5,6]])),2)
-	array([[ 1.58,  3.16,  4.74],
-		   [ 2.53,  3.16,  3.79]])
-	'''
-	sf = sizeFactors(vals)
-	nA = np.array(vals/np.matrix(sf).T)
-	return nA
-
-def processFiles(files):
-	p = Pool(len(files))
-	ret = p.map(parseBG, files)
-	vals = []
-	for i in xrange(len(ret)):
-		vals.append(deepcopy(ret[i][1]))
-	locations = deepcopy(ret[0][0])
-	del ret
-	p.close()
-	p.join()
-	gc.collect()
-	return (locations, np.array(vals,dtype=np.float32))
-
-def parseBG(inFile):
-	lines = open(inFile,'r').readlines()
-	tmp = map(lambda y: y.rstrip('\n').split('\t'), lines)
-	locs = tuple(map(lambda y: y[:3], tmp))
-	vals = np.array(map(lambda y: np.float(y[3]), tmp), dtype=np.float32)
-	#vals[vals < 2] = 0
-	return (locs, vals)
 
 def readFAI(inFile):
 	'''
@@ -189,12 +200,12 @@ def main():
 	makeGFF(fList, chromDict, args.L, args.S)
 	print "Done"
 
-def parseLocations(locations):
+def parseLocations(chroms):
 	ctmp = ""
 	start = 0
 	locDict = {}
-	for i in xrange(len(locations)):
-		chrom = locations[i][0]
+	for i in xrange(len(chroms)):
+		chrom = chroms[i]
 		if chrom != ctmp:
 			if ctmp != "":
 				locDict[ctmp] = (start, i)
@@ -212,12 +223,14 @@ def makeGFF(fList, chromDict, level, S):
 		open(outGFF,'w').write('##gff-version 3\n#track name="%s LogFold %ibp" gffTags=on\n' % (name,S))
 		open("logFC_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
 	print "Parsing :",beds
-	locations, vals = processFiles(beds)
-	locDict = parseLocations(locations)
+	L, vals = processFiles(beds)
+	locDict = parseLocations(L[0])
 	for chrom in sortedChroms:
 		s,e = locDict[chrom]
-		tmpLoc = locations[s:e]
-		maskM = np.zeros((len(names),len(tmpLoc)),dtype=np.bool)
+		tmpChr = L[0][s:e]
+		tmpS = L[1][s:e]
+		tmpE = L[2][s:e]
+		maskM = np.zeros((len(names),len(tmpChr)),dtype=np.bool)
 		for i in xrange(len(beds)):
 			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
 			outSignal = vals[i,s:e]
@@ -226,11 +239,13 @@ def makeGFF(fList, chromDict, level, S):
 			maskM[i,:]=bMask[:]
 			rBounds = calcRegionBounds(bMask)
 			OF = open(outGFF,'a')
+			count = 1
 			for rS,rE in rBounds:
-				OF.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tcolor=%s;\n" % (tmpLoc[rS][0], int(tmpLoc[rS][1])+1, tmpLoc[rE][2], myColors[i]))
-				#OF.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%04d;color=%s;\n" % (locations[i][s][0], int(locations[i][s][1])+1, locations[i][e][2], count, myColors[i]))
+				OF.write("%s\t.\tgene\t%i\t%i\t.\t.\t.\tID=gene%i;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, myColors[i]))
+				count += 1
 			OF.close()
 		OS = open('logFC_segmentation.gff3','a')
+		count = 1
 		setSigI = set(range(len(names)))
 		for s in powerSet(range(len(names))):
 			setS = set(s)
@@ -242,7 +257,8 @@ def makeGFF(fList, chromDict, level, S):
 			rBounds = calcRegionBounds(tA)
 			name = ''.join(map(lambda y: names[y],sorted(s)))
 			for rS,rE in rBounds:
-				OS.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tName=%s;color=%s;\n" % (tmpLoc[rS][0], int(tmpLoc[rS][1])+1, tmpLoc[rE][2], name, colorDict[frozenset(s)]))
+				OS.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%i;Name=%s;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, name, colorDict[frozenset(s)]))
+				count += 1
 		OS.close()
 
 def powerSet(L):
@@ -326,17 +342,6 @@ def calcRegionBounds(counter):
 	idx.shape = (-1,2)
 	idx[:,0] += 1
 	return idx
-
-#def parseBG(inFile,chrom):
-#	lines = open(inFile,'r').readlines()
-#	tmp = map(lambda y: y.rstrip('\n').split('\t'), lines)
-#	toKeep = []
-#	for line in tmp:
-#		if line[0] == chrom:
-#			toKeep.append(line)
-#	locs = map(lambda y: y[:3], toKeep)
-#	vals = np.array(map(lambda y: np.float(y[3]), toKeep))
-#	return locs, vals
 
 if __name__ == "__main__":
 	main()

@@ -43,14 +43,14 @@ The following binaries need to exist on the user's PATH:
 ### Input TXT
 Each line of the text file needs to contain a path to a bam file and a short name for the file separated by a **tab**. For example:
 ```
-example_sorted.bam	EX
+example.bam	EX
 ```
 The first line of this file needs to be the control (G1). All subsequent lines need to be listed sequentially according to experimental time. An example file would be:
 ```
-G1_sorted.bam	G1
-ES_sorted.bam	ES
-MS_sorted.bam	MS
-LS_sorted.bam	LS
+G1_001.bam	G1
+ES_001.bam	ES
+MS_001.bam	MS
+LS_001.bam	LS
 ```
 
 ## Output
