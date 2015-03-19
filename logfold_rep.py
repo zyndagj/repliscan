@@ -61,7 +61,7 @@ def normalize(vals):
 	return nA
 
 def processFiles(files):
-	p = Pool(12)
+	p = Pool(cpu_count())
 	vals = []
 	for i in p.imap(parseVals, files):
 		vals.append(i)
