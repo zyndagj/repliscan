@@ -20,6 +20,7 @@ def printMem():
 	print "Memory:",mem_gib
 
 def run_logFC(fList, thresh=2.5):
+	print fList
 	beds = map(lambda y: y[1]+".bedgraph", fList)
 	if not os.path.exists(fList[1][1]+"_logFC.bedgraph"):
 		print "Making LogFold Files From:", beds
@@ -160,10 +161,10 @@ def parseIN(inFile):
 	fList = []
 	for line in open(inFile,'r'):
 		tmp = line.rstrip('\n').split('\t')
-		fList.append(tuple(tmp))
+		fList.append((tuple(tmp[1:]), tmp[0]))
 	return fList
 
-def makeBedgraph(fList, fasta, size):
+def makeBedgraph(fList, fasta, size, replicates):
 	fai = fasta+".fai"
 	bed = "%s.%i.bed"%(fasta,size)
 	if not os.path.exists(fai):
@@ -174,25 +175,62 @@ def makeBedgraph(fList, fasta, size):
 		print "Making %ibp window bed"%(size)
 		os.system("bedtools makewindows -g %s -w %i | sort -S 20G -k1,1 -k2,2n > %s"%(fai,size,bed))
 	else: print "%s exists already"%(bed)
-	for bam, prefix in fList:
-		bg = prefix+'.bedgraph'
-		if not os.path.exists(bg):
-			print "Generating intersect for %s"%(bam)
-			os.system("bedtools bamtobed -i %s | cut -f 1-3 | sort -S 20G -k1,1 -k2,2n | bedtools intersect -a %s -b stdin -c -sorted > %s"%(bam,bed,bg))
+	for bams, prefix in fList:
+		finalBG = prefix+'.bedgraph'
+		if not os.path.exists(finalBG):
+			if len(bams) == 1:
+				bam = bams[0]
+				print "Generating intersect for %s"%(bams)
+				os.system("bedtools bamtobed -i %s | cut -f 1-3 | sort -S 20G -k1,1 -k2,2n | bedtools intersect -a %s -b stdin -c -sorted > %s"%(bam,bed,finalBG))
+			else:
+				bgs = []
+				for bam in bams:
+					print "Generating intersect for %s"%(bam)
+					bg = bam+'.bedgraph'
+					if not os.path.exists(bg):
+						os.system("bedtools bamtobed -i %s | cut -f 1-3 | sort -S 20G -k1,1 -k2,2n | bedtools intersect -a %s -b stdin -c -sorted > %s"%(bam,bed,bg))
+					bgs.append(bg)
+				bgStr = ' '.join(bgs)
+				os.system("sort -m -S 20G -k1,1 -k2,2n %s | bedtools map -a %s -b stdin -c 4 -o %s > %s && rm %s"%(bgStr, bed, replicates, finalBG, bgStr))
 
 def main():
-	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files. The main input is a text file that contains a list of bam files. The first line is used as the control, or input.")
+	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files.",formatter_class=argparse.RawDescriptionHelpFormatter, epilog='''\
+Input TXT File:
+  Each line of the text file needs to contain
+  a short name describing the sample and then a
+  list of bam files corresponding to that name,
+  all separated by tabs.
+
+  The first line of this
+  file needs to be the control (G1).
+  All subsequent lines need to be listed
+  sequentially according to experimental time.
+
+  Example TXT File:
+  G1	G1_001.bam	G1_002.bam
+  ES	ES_001.bam
+  MS	MS_001.bam	MS_L1.bam	MS_L2.bam
+
+Methods to handle replicates:
+  - sum (Default)
+  - median
+  - mean
+  - min
+  - max''')
 	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
 	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
+	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
 	args = parser.parse_args()
+	if args.C.lower() not in ['sum','median']:
+		sys.exit("Please handle replicates using either sum or median methods.")
 	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
 		fai = args.F+'.fai'
 	else:
 		sys.exit("Please specify a fasta file\n")
 	fList = parseIN(args.infile)
-	makeBedgraph(fList, args.F, args.S)
+	makeBedgraph(fList, args.F, args.S, args.C.lower())
 	chromDict = readFAI(fai)
 	run_logFC(fList)
 	smooth(args.L, fList, chromDict)

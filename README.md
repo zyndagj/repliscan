@@ -29,7 +29,7 @@ The following binaries need to exist on the user's PATH:
 ## Running the Pipeline
 
 ### Usage
-`python logFC_calculate.py [-h] -F FASTA [-L INT] [-S INT] FILE`
+`python logfold_rep.py [-h] -F FASTA [-L INT] [-S INT] [-C STR] FILE`
 
 ### Required Arguments
 
@@ -37,21 +37,32 @@ The following binaries need to exist on the user's PATH:
 |:----:|:------:|-------------|
 |-F|FASTA|The fasta file used for alignment|
 |-L|INT|The level of smoothing to use \[1,5\] \(Default: 2\)|
-|-S|INT|The size of each window in the bedgraphs (Default: 500)|
+|-S|INT|The size of each window in the bedgraphs \(Default: 500\)|
+|-C|STR|How to handle replicates \(Default: sum\)|
 |  |TXT| A text file listing bams for input|
 
 ### Input TXT
-Each line of the text file needs to contain a path to a bam file and a short name for the file separated by a **tab**. For example:
+Each line of the text file needs to contain a short name describing the sample and then a list of bam files corresponding to that name, all separated by tabs.
+
+For example:
+
 ```
-example.bam	EX
+EX	example_rep_1.bam	example_rep_2.bam
 ```
 The first line of this file needs to be the control (G1). All subsequent lines need to be listed sequentially according to experimental time. An example file would be:
 ```
-G1_001.bam	G1
-ES_001.bam	ES
-MS_001.bam	MS
-LS_001.bam	LS
+G1	G1_001.bam	G1_002.bam
+ES	ES_001.bam
+MS	MS_001.bam	MS_L1.bam	MS_L2.bam
+LS	LS.bam
 ```
+
+### Handling Replicates
+  - sum (Default)                                    
+  - median                                           
+  - mean                                             
+  - min                                              
+  - max                                              
 
 ## Output
 | File | Description |
