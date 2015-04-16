@@ -14,6 +14,51 @@ myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 zero = 0.0004
 
+def main():
+	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files.",formatter_class=argparse.RawDescriptionHelpFormatter, epilog='''\
+Input TXT File:
+  Each line of the text file needs to contain
+  a short name describing the sample and then a
+  list of bam files corresponding to that name,
+  all separated by tabs.
+
+  The first line of this
+  file needs to be the control (G1).
+  All subsequent lines need to be listed
+  sequentially according to experimental time.
+
+  Example TXT File:
+  G1	G1_001.bam	G1_002.bam
+  ES	ES_001.bam
+  MS	MS_001.bam	MS_L1.bam	MS_L2.bam
+
+Methods to handle replicates:
+  - sum (Default)
+  - median
+  - mean
+  - min
+  - max''')
+	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
+	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
+	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
+	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
+	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
+	args = parser.parse_args()
+	if args.C.lower() not in ['sum','median']:
+		sys.exit("Please handle replicates using either sum or median methods.")
+	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
+		fai = args.F+'.fai'
+	else:
+		sys.exit("Please specify a fasta file\n")
+	fList = parseIN(args.infile)
+	makeBedgraph(fList, args.F, args.S, args.C.lower())
+	chromDict = readFAI(fai)
+	run_logFC(fList)
+	smooth(args.L, fList, chromDict)
+	gc.collect()
+	makeGFF(fList, chromDict, args.L, args.S)
+	print "Done"
+
 def printMem():
 	mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_AVPHYS_PAGES')  # e.g. 4015976448
 	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
@@ -192,51 +237,6 @@ def makeBedgraph(fList, fasta, size, replicates):
 					bgs.append(bg)
 				bgStr = ' '.join(bgs)
 				os.system("sort -m -S 20G -k1,1 -k2,2n %s | bedtools map -a %s -b stdin -c 4 -o %s > %s && rm %s"%(bgStr, bed, replicates, finalBG, bgStr))
-
-def main():
-	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files.",formatter_class=argparse.RawDescriptionHelpFormatter, epilog='''\
-Input TXT File:
-  Each line of the text file needs to contain
-  a short name describing the sample and then a
-  list of bam files corresponding to that name,
-  all separated by tabs.
-
-  The first line of this
-  file needs to be the control (G1).
-  All subsequent lines need to be listed
-  sequentially according to experimental time.
-
-  Example TXT File:
-  G1	G1_001.bam	G1_002.bam
-  ES	ES_001.bam
-  MS	MS_001.bam	MS_L1.bam	MS_L2.bam
-
-Methods to handle replicates:
-  - sum (Default)
-  - median
-  - mean
-  - min
-  - max''')
-	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
-	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
-	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
-	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
-	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
-	args = parser.parse_args()
-	if args.C.lower() not in ['sum','median']:
-		sys.exit("Please handle replicates using either sum or median methods.")
-	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
-		fai = args.F+'.fai'
-	else:
-		sys.exit("Please specify a fasta file\n")
-	fList = parseIN(args.infile)
-	makeBedgraph(fList, args.F, args.S, args.C.lower())
-	chromDict = readFAI(fai)
-	run_logFC(fList)
-	smooth(args.L, fList, chromDict)
-	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S)
-	print "Done"
 
 def parseLocations(chroms):
 	ctmp = ""
