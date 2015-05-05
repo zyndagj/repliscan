@@ -43,6 +43,7 @@ Methods to handle replicates:
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
+	parser.add_argument("-P", action='store_true', help="Plot Coverage")
 	args = parser.parse_args()
 	if args.C.lower() not in ['sum','median']:
 		sys.exit("Please handle replicates using either sum or median methods.")
@@ -56,7 +57,7 @@ Methods to handle replicates:
 	run_logFC(fList)
 	smooth(args.L, fList, chromDict)
 	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S)
+	makeGFF(fList, chromDict, args.L, args.S, args.P)
 	print "Done"
 
 def printMem():
@@ -252,7 +253,7 @@ def parseLocations(chroms):
 	locDict[ctmp] = (start,i+1)
 	return locDict
 
-def makeGFF(fList, chromDict, level, S):
+def makeGFF(fList, chromDict, level, S, plotCov):
 	sortedChroms = sorted(chromDict.keys()[:])
 	beds = map(lambda y: "%s_logFC_%i.smooth.bedgraph"%(y[1],level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
@@ -265,6 +266,8 @@ def makeGFF(fList, chromDict, level, S):
 	locDict = parseLocations(L[0])
 	for chrom in sortedChroms:
 		s,e = locDict[chrom]
+		if plotCov:
+			plotCoverage(vals[:,s:e])
 		tmpChr = L[0][s:e]
 		tmpS = L[1][s:e]
 		tmpE = L[2][s:e]
@@ -298,6 +301,12 @@ def makeGFF(fList, chromDict, level, S):
 				OS.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%i;Name=%s;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, name, colorDict[frozenset(s)]))
 				count += 1
 		OS.close()
+
+def plotCoverage(vals):
+	for thresh in np.arange(0,-10,-0.1):
+		print vals.shape
+		print np.sum(vals > thresh, axis=1).shape
+	sys.exit()
 
 def powerSet(L):
 	'''
