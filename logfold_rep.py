@@ -12,7 +12,6 @@ from array import array
 
 myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
-zero = 0.0004
 
 def main():
 	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files.",formatter_class=argparse.RawDescriptionHelpFormatter, epilog='''\
@@ -253,6 +252,11 @@ def parseLocations(chroms):
 	locDict[ctmp] = (start,i+1)
 	return locDict
 
+def fMissingCoverage(t, allSignal):
+	print (allSignal > t).shape
+	sys.exit()
+	
+
 def makeGFF(fList, chromDict, level, S, plotCov):
 	sortedChroms = sorted(chromDict.keys()[:])
 	beds = map(lambda y: "%s_logFC_%i.smooth.bedgraph"%(y[1],level), fList[1:])
@@ -272,11 +276,13 @@ def makeGFF(fList, chromDict, level, S, plotCov):
 		tmpS = L[1][s:e]
 		tmpE = L[2][s:e]
 		maskM = np.zeros((len(names),len(tmpChr)),dtype=np.bool)
+		allSignal = vals[:len(beds),s:e]
+		fMissingCoverage(0.004, allSignal)
 		for i in xrange(len(beds)):
 			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
-			bMask[outSignal > zero] = 1
+			bMask[outSignal > zero] = 1 #need to change this
 			maskM[i,:]=bMask[:]
 			rBounds = calcRegionBounds(bMask)
 			OF = open(outGFF,'a')
