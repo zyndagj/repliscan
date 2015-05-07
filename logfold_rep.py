@@ -9,6 +9,12 @@ from glob import glob
 import gc
 from copy import deepcopy
 from array import array
+import scipy.optimize
+import scipy.interpolate
+import scipy.misc
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
@@ -253,9 +259,10 @@ def parseLocations(chroms):
 	return locDict
 
 def fMissingCoverage(t, allSignal):
-	print (allSignal > t).shape
-	sys.exit()
-	
+	max = allSignal.shape[1]
+	ret= np.mean(np.sum(np.any(allSignal > t, axis=0)))/float(max)
+	print (t,ret)
+	return ret
 
 def makeGFF(fList, chromDict, level, S, plotCov):
 	sortedChroms = sorted(chromDict.keys()[:])
@@ -270,19 +277,44 @@ def makeGFF(fList, chromDict, level, S, plotCov):
 	locDict = parseLocations(L[0])
 	for chrom in sortedChroms:
 		s,e = locDict[chrom]
-		if plotCov:
-			plotCoverage(vals[:,s:e])
 		tmpChr = L[0][s:e]
 		tmpS = L[1][s:e]
 		tmpE = L[2][s:e]
 		maskM = np.zeros((len(names),len(tmpChr)),dtype=np.bool)
 		allSignal = vals[:len(beds),s:e]
-		fMissingCoverage(0.004, allSignal)
+		print chrom
+		asMin = np.min(allSignal)
+		asMax = np.max(allSignal)
+		X = np.arange(asMin-0.5, asMax+0.5, 0.1)
+		vFunc = np.vectorize(fMissingCoverage, excluded=['allSignal'])
+		Y = vFunc(X,allSignal=allSignal)
+		intF = scipy.interpolate.interp1d(X,Y,kind="cubic")
+		dX = np.arange(asMin,asMax,0.01)
+		d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
+		try:
+			thresh = dX[np.min(np.where(np.abs(d1)>0.01))]
+		except:
+			thresh = 0.0
+		if plotCov:
+			plt.figure(1)
+			plt.subplot(211)
+			plt.plot(dX,intF(dX))
+			plt.axvline(x=thresh,color="red")
+			plt.title("Cubic Interpolation of %s Coverage"%(chrom))
+			plt.ylabel("Fraction of Chromosome")
+			plt.subplot(212)
+			plt.plot(dX,d1)
+			plt.axvline(x=thresh,color="red")
+			plt.title("Derivative of Interpolation for %s"%(chrom))
+			plt.ylabel("Fraction of Chromosome")
+			plt.xlabel("Threshold")
+			plt.savefig("%s_fig.png"%(chrom))
+			plt.clf()
 		for i in xrange(len(beds)):
 			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
-			bMask[outSignal > zero] = 1 #need to change this
+			bMask[outSignal > thresh] = 1 #need to change this
 			maskM[i,:]=bMask[:]
 			rBounds = calcRegionBounds(bMask)
 			OF = open(outGFF,'a')
