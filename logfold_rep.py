@@ -48,7 +48,11 @@ Methods to handle replicates:
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
-	parser.add_argument("-P", action='store_true', help="Plot Coverage")
+	parser.add_argument("-M", metavar='STR', help="Replicating Method (zero|auto|percent) (Default: %(default)s)", default="zero", type=str)
+	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
+	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
+	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=0.2, type=float)
+	parser.add_argument("--plot", action='store_true', help="Plot Coverage")
 	args = parser.parse_args()
 	if args.C.lower() not in ['sum','median']:
 		sys.exit("Please handle replicates using either sum or median methods.")
@@ -62,7 +66,7 @@ Methods to handle replicates:
 	run_logFC(fList)
 	smooth(args.L, fList, chromDict)
 	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S, args.P)
+	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.M, args.T, args.P, args.seg)
 	print "Done"
 
 def printMem():
@@ -264,7 +268,7 @@ def fMissingCoverage(t, allSignal):
 	print (t,ret)
 	return ret
 
-def makeGFF(fList, chromDict, level, S, plotCov):
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod="zero", thresh=0.0, pCut=0.2, segMeth="binary"):
 	sortedChroms = sorted(chromDict.keys()[:])
 	beds = map(lambda y: "%s_logFC_%i.smooth.bedgraph"%(y[1],level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
@@ -282,35 +286,43 @@ def makeGFF(fList, chromDict, level, S, plotCov):
 		tmpE = L[2][s:e]
 		maskM = np.zeros((len(names),len(tmpChr)),dtype=np.bool)
 		allSignal = vals[:len(beds),s:e]
-		print chrom
-		asMin = np.min(allSignal)
-		asMax = np.max(allSignal)
-		X = np.arange(asMin-0.5, asMax+0.5, 0.1)
-		vFunc = np.vectorize(fMissingCoverage, excluded=['allSignal'])
-		Y = vFunc(X,allSignal=allSignal)
-		intF = scipy.interpolate.interp1d(X,Y,kind="cubic")
-		dX = np.arange(asMin,asMax,0.01)
-		d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
-		try:
-			thresh = dX[np.min(np.where(np.abs(d1)>0.01))]
-		except:
+		if threshMethod == "zero":
 			thresh = 0.0
-		if plotCov:
-			plt.figure(1)
-			plt.subplot(211)
-			plt.plot(dX,intF(dX))
-			plt.axvline(x=thresh,color="red")
-			plt.title("Cubic Interpolation of %s Coverage"%(chrom))
-			plt.ylabel("Fraction of Chromosome")
-			plt.subplot(212)
-			plt.plot(dX,d1)
-			plt.axvline(x=thresh,color="red")
-			plt.title("Derivative of Interpolation for %s"%(chrom))
-			plt.ylabel("Fraction of Chromosome")
-			plt.xlabel("Threshold")
-			plt.savefig("%s_fig.png"%(chrom))
-			plt.clf()
+		elif threshMethod == "auto":
+			asMin = np.min(allSignal)
+			asMax = np.max(allSignal)
+			X = np.arange(asMin-0.5, asMax+0.5, 0.1)
+			vFunc = np.vectorize(fMissingCoverage, excluded=['allSignal'])
+			Y = vFunc(X,allSignal=allSignal)
+			intF = scipy.interpolate.interp1d(X,Y,kind="cubic")
+			dX = np.arange(asMin,asMax,0.01)
+			d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
+			try:
+				thresh = dX[np.min(np.where(np.abs(d1)>0.01))]
+			except:
+				thresh = 0.0
+			if plotCov:
+				plt.figure(1)
+				plt.subplot(211)
+				plt.plot(dX,intF(dX))
+				plt.axvline(x=thresh,color="red")
+				plt.title("Cubic Interpolation of %s Coverage"%(chrom))
+				plt.ylabel("Fraction of Chromosome")
+				plt.subplot(212)
+				plt.plot(dX,d1)
+				plt.axvline(x=thresh,color="red")
+				plt.title("Derivative of Interpolation for %s"%(chrom))
+				plt.ylabel("Fraction of Chromosome")
+				plt.xlabel("Threshold")
+				plt.savefig("%s_fig.png"%(chrom))
+				plt.clf()
+		elif threshMethod == "percent":
+			bThresh = np.percentile(allSignal, int(pCut*100), axis=1)
+		else:
+			sys.exit("invalid threshold method")
 		for i in xrange(len(beds)):
+			if threshMethod == "percent":
+				thresh = bThresh[i]
 			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
@@ -323,6 +335,16 @@ def makeGFF(fList, chromDict, level, S, plotCov):
 				OF.write("%s\t.\tgene\t%i\t%i\t.\t.\t.\tID=gene%i;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, myColors[i]))
 				count += 1
 			OF.close()
+		## Segmentation
+		if segMeth == "proportion":
+			for i in xrange(np.shape(maskM)[1]):
+				maskRow = maskM[:,i]
+				vRow = allSignal[:,i]-thresh
+				vRow[maskRow == 0] = 0.0
+				rowSum = np.sum(maskRow)
+				if rowSum > 1:
+					hsvRow = hsvClass(vRow)
+					maskM[:,i] = hsvRow
 		OS = open('logFC_segmentation.gff3','a')
 		count = 1
 		setSigI = set(range(len(names)))
@@ -339,6 +361,37 @@ def makeGFF(fList, chromDict, level, S, plotCov):
 				OS.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%i;Name=%s;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, name, colorDict[frozenset(s)]))
 				count += 1
 		OS.close()
+
+import colorsys
+
+def hsvClass(eml):
+	mV = np.max(eml)
+	e,m,l = eml*255.0/mV
+	h,s,v = colorsys.rgb_to_hsv(e,m,l)
+	if s < 0.05 or v < 255*0.05:
+		return np.array([1,1,1],dtype=np.bool) #EML
+	if h >= 330 or h < 30:
+		return np.array([1,0,0],dtype=np.bool) #E
+	if h >= 30 or h < 90:
+		return np.array([1,1,0],dtype=np.bool) #EM
+	if h >= 90 or h < 150:
+		return np.array([0,1,0],dtype=np.bool) #M
+	if h >= 150 or h < 210:
+		return np.array([0,1,1],dtype=np.bool) #ML
+	if h >= 210 or h < 270:
+		return np.array([0,0,1],dtype=np.bool) #L
+	if h >= 270 or h < 330:
+		return np.array([1,0,1],dtype=np.bool) #EL
+
+def mar(nums, totals):
+	P = np.array(nums,dtype=np.float)/np.array(totals,dtype=np.float)
+	N = len(nums)
+	c2 = ss.chi2.ppf(0.95,4)
+	for i in range(N-1):
+		for j in range(i+1,N):
+			V = np.abs(P[i]-P[j])
+			CR = np.sqrt(c2)*np.sqrt((P[i]*(1.0-P[i])/totals[i])+(P[j]*(1.0-P[j])/totals[j]))
+			print i,j,V,CR
 
 def plotCoverage(vals):
 	for thresh in np.arange(0,-10,-0.1):
