@@ -31,7 +31,7 @@ The following binaries need to exist on the user's PATH:
 ### Usage
 `python logfold_rep.py [-h] -F FASTA [-L INT] [-S INT] [-C STR] FILE`
 
-### Required Arguments
+### Arguments
 
 | Flag | Option | Description |
 |:----:|:------:|:------------|
