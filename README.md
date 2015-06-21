@@ -39,8 +39,8 @@ The following binaries need to exist on the user's PATH:
 |-L|INT|The level of smoothing to use \[1,5\] \(Default: 2\)|
 |-S|INT|The size of each window in the bedgraphs \(Default: 500\)|
 |-C|STR|How to handle replicates \(Default: sum\)|
-|--rep|STR|Replicating Method \(threshold|auto|percent\) \(Default: threshold\)|
-|--seg|STR|Segmentation Method \(binary|proportion\) \(Default: binary\)|
+|--rep|STR|Replicating Method \(threshold\|auto\|percent\) \(Default: threshold\)|
+|--seg|STR|Segmentation Method \(binary\|proportion\) \(Default: binary\)|
 |-T|Float|Threshold Level \(Default: 0.0\)|
 |-P|Float|Percent Cut \(Default: 2.0\)|
 |--plot| |Plot Coverage|
