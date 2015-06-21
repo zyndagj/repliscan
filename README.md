@@ -39,11 +39,11 @@ The following binaries need to exist on the user's PATH:
 |-L|INT|The level of smoothing to use \[1,5\] \(Default: 2\)|
 |-S|INT|The size of each window in the bedgraphs \(Default: 500\)|
 |-C|STR|How to handle replicates \(Default: sum\)|
-|--rep STR|Replicating Method \(threshold|auto|percent\) \(Default: threshold\)|
-|--seg STR|Segmentation Method \(binary|proportion\) \(Default: binary\)|
-|-T Float|Threshold Level (Default: 0.0)|
-|-P Float|Percent Cut \(Default: 2.0\)|
-|--plot|Plot Coverage|
+|--rep|STR|Replicating Method \(threshold|auto|percent\) \(Default: threshold\)|
+|--seg|STR|Segmentation Method \(binary|proportion\) \(Default: binary\)|
+|-T|Float|Threshold Level \(Default: 0.0\)|
+|-P|Float|Percent Cut \(Default: 2.0\)|
+|--plot| |Plot Coverage|
 |  |TXT| A text file listing bams for input|
 
 ### Input TXT
@@ -63,13 +63,13 @@ LS	LS.bam
 ```
 
 ### Replication Methods
-- threshold - A log(ratio) above this value is considered to be replicating.
-- auto - Determine a log(ratio) threshold unique to each chromosome based on change in coverage.
-- percent - Values greater than this percentile are considered to be replicating.
+- `threshold` - A log(ratio) above threshold (T) is considered replicating.
+- `auto` - Determine a log(ratio) threshold unique to each chromosome based on change in coverage.
+- `percent` - log(ratio) values for each chromosome above percentile (P) are considered replicating.
 
 ### Segmentation Methods
-- binary - Time classifications are combined on a binary basis.
-- proportion - Time classifications are determined based on proportion.
+- `binary` - Time classifications are combined on a binary basis.
+- `proportion` - Time classifications are determined based on proportion (HSV).
 
 ### Handling Replicates
   - sum (Default)                                    
