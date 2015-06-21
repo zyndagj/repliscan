@@ -53,10 +53,10 @@ Methods to handle replicates:
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
-	parser.add_argument("--rep", metavar='STR', help="Replicating Method (zero|auto|percent) (Default: %(default)s)", default="zero", type=str)
+	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="threshold", type=str)
 	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
 	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
-	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=0.2, type=float)
+	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=2.0, type=float)
 	parser.add_argument("--plot", action='store_true', help="Plot Coverage")
 	args = parser.parse_args()
 	if args.C.lower() not in ['sum','median']:
@@ -71,7 +71,7 @@ Methods to handle replicates:
 	run_logFC(fList)
 	smooth(args.L, fList, chromDict)
 	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.M, args.T, args.P, args.seg)
+	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.T, args.P, args.seg)
 	print "Done"
 
 def printMem():
@@ -273,7 +273,7 @@ def fMissingCoverage(t, allSignal):
 	print (t,ret)
 	return ret
 
-def makeGFF(fList, chromDict, level, S, plotCov, threshMethod="zero", thresh=0.0, pCut=0.2, segMeth="binary"):
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=2.0, segMeth="binary"):
 	sortedChroms = sorted(chromDict.keys()[:])
 	beds = map(lambda y: "%s_logFC_%i.smooth.bedgraph"%(y[1],level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
@@ -291,8 +291,8 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod="zero", thresh=0.0
 		tmpE = L[2][s:e]
 		maskM = np.zeros((len(names),len(tmpChr)),dtype=np.bool)
 		allSignal = vals[:len(beds),s:e]
-		if threshMethod == "zero":
-			thresh = 0.0
+		if threshMethod == "threshold":
+			pass
 		elif threshMethod == "auto":
 			asMin = np.min(allSignal)
 			asMax = np.max(allSignal)
@@ -322,7 +322,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod="zero", thresh=0.0
 				plt.savefig("%s_fig.png"%(chrom))
 				plt.clf()
 		elif threshMethod == "percent":
-			bThresh = np.percentile(allSignal, int(pCut*100), axis=1)
+			bThresh = np.percentile(allSignal, pCut, axis=1)
 		else:
 			sys.exit("invalid threshold method")
 		for i in xrange(len(beds)):
@@ -331,7 +331,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod="zero", thresh=0.0
 			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
-			bMask[outSignal > thresh] = 1 #need to change this
+			bMask[outSignal > thresh] = 1
 			maskM[i,:]=bMask[:]
 			rBounds = calcRegionBounds(bMask)
 			OF = open(outGFF,'a')
@@ -350,6 +350,10 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod="zero", thresh=0.0
 				if rowSum > 1:
 					hsvRow = hsvClass(vRow)
 					maskM[:,i] = hsvRow
+		elif segMeth == "binary":
+			pass
+		else:
+			sys.exit("invalid segmentation method: "+segMeth)
 		OS = open('logFC_segmentation.gff3','a')
 		count = 1
 		setSigI = set(range(len(names)))
