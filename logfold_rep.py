@@ -16,7 +16,12 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
+#myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
+#myColors = ("#0000FF", "#009933", "#FF0033", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
+#Early(blue): 0,0,255
+#Mid(green): 0,153,51
+#Late(red): 255,0,51
+myColors = ("#0000FF","#00FF00","#FF0000","#FFFF00","#FF00FF","#00FFFF","#FFFFFF") #all 3 is white
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
 def main():
@@ -48,7 +53,7 @@ Methods to handle replicates:
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
-	parser.add_argument("-M", metavar='STR', help="Replicating Method (zero|auto|percent) (Default: %(default)s)", default="zero", type=str)
+	parser.add_argument("--rep", metavar='STR', help="Replicating Method (zero|auto|percent) (Default: %(default)s)", default="zero", type=str)
 	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
 	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
 	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=0.2, type=float)
