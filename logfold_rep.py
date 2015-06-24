@@ -15,6 +15,7 @@ import scipy.misc
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import colorsys
 
 #myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
 #myColors = ("#0000FF", "#009933", "#FF0033", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
@@ -349,6 +350,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
 					hsvRow = hsvClass(vRow)
+					print vRow, hsvRow
 					maskM[:,i] = hsvRow
 		elif segMeth == "binary":
 			pass
@@ -371,26 +373,17 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=
 				count += 1
 		OS.close()
 
-import colorsys
-
 def hsvClass(eml):
 	mV = np.max(eml)
-	e,m,l = eml*255.0/mV
+	e,m,l = eml/mV
 	h,s,v = colorsys.rgb_to_hsv(e,m,l)
-	if s < 0.05 or v < 255*0.05:
+	print eml, (e,m,l), (h,s,v)
+	if s < 0.1 or v < 0.1:
 		return np.array([1,1,1],dtype=np.bool) #EML
-	if h >= 330 or h < 30:
-		return np.array([1,0,0],dtype=np.bool) #E
-	if h >= 30 or h < 90:
-		return np.array([1,1,0],dtype=np.bool) #EM
-	if h >= 90 or h < 150:
-		return np.array([0,1,0],dtype=np.bool) #M
-	if h >= 150 or h < 210:
-		return np.array([0,1,1],dtype=np.bool) #ML
-	if h >= 210 or h < 270:
-		return np.array([0,0,1],dtype=np.bool) #L
-	if h >= 270 or h < 330:
-		return np.array([1,0,1],dtype=np.bool) #EL
+	points = np.arange(0,361,60)/360.0
+	cIndex = np.argmin(np.abs(points-h))
+	output = np.array([[1,0,0],[1,1,0],[0,1,0],[0,1,1],[0,0,1],[1,0,1],[1,0,0]], dtype=np.bool)
+	return output[cIndex] # [E, EM, M, ML, L]
 
 def mar(nums, totals):
 	P = np.array(nums,dtype=np.float)/np.array(totals,dtype=np.float)
