@@ -350,7 +350,6 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
 					hsvRow = hsvClass(vRow)
-					print vRow, hsvRow
 					maskM[:,i] = hsvRow
 		elif segMeth == "binary":
 			pass
@@ -377,7 +376,7 @@ def hsvClass(eml):
 	mV = np.max(eml)
 	e,m,l = eml/mV
 	h,s,v = colorsys.rgb_to_hsv(e,m,l)
-	print eml, (e,m,l), (h,s,v)
+	#print eml, (e,m,l), (h,s,v)
 	if s < 0.1 or v < 0.1:
 		return np.array([1,1,1],dtype=np.bool) #EML
 	points = np.arange(0,361,60)/360.0
