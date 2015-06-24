@@ -19,10 +19,7 @@ import colorsys
 
 #myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
 #myColors = ("#0000FF", "#009933", "#FF0033", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
-#Early(blue): 0,0,255
-#Mid(green): 0,153,51
-#Late(red): 255,0,51
-myColors = ("#0000FF","#00FF00","#FF0000","#FFFF00","#FF00FF","#00FFFF","#FFFFFF") #all 3 is white
+myColors = ("#0000FF","#00FF00","#FF0000","#FFFF00","#FF00FF","#00FFFF","#F9A70AF") #all 3 is white
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
 def main():
