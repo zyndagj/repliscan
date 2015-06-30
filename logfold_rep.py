@@ -18,8 +18,8 @@ import matplotlib.pyplot as plt
 import colorsys
 
 #myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
-#myColors = ("#0000FF", "#009933", "#FF0033", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
-myColors = ("#0000FF","#00FF00","#FF0000","#FFFF00","#FF00FF","#00FFFF","#F9A70AF") #all 3 is white
+#myColors = ("#0000FF","#00FF00","#FF0000","#FFFF00","#FF00FF","#00FFFF","#F9A70AF")
+myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
 def main():
@@ -271,6 +271,22 @@ def fMissingCoverage(t, allSignal):
 	print (t,ret)
 	return ret
 
+def plotCoverage(dX, d1, thresh, intF):
+	plt.figure(1)
+	plt.subplot(211)
+	plt.plot(dX,intF(dX))
+	plt.axvline(x=thresh,color="red")
+	plt.title("Cubic Interpolation of %s Coverage"%(chrom))
+	plt.ylabel("Fraction of Chromosome")
+	plt.subplot(212)
+	plt.plot(dX,d1)
+	plt.axvline(x=thresh,color="red")
+	plt.title("Derivative of Interpolation for %s"%(chrom))
+	plt.ylabel("Fraction of Chromosome")
+	plt.xlabel("Threshold")
+	plt.savefig("%s_fig.png"%(chrom))
+	plt.clf()
+
 def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=2.0, segMeth="binary"):
 	sortedChroms = sorted(chromDict.keys()[:])
 	beds = map(lambda y: "%s_logFC_%i.smooth.bedgraph"%(y[1],level), fList[1:])
@@ -305,20 +321,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=
 			except:
 				thresh = 0.0
 			if plotCov:
-				plt.figure(1)
-				plt.subplot(211)
-				plt.plot(dX,intF(dX))
-				plt.axvline(x=thresh,color="red")
-				plt.title("Cubic Interpolation of %s Coverage"%(chrom))
-				plt.ylabel("Fraction of Chromosome")
-				plt.subplot(212)
-				plt.plot(dX,d1)
-				plt.axvline(x=thresh,color="red")
-				plt.title("Derivative of Interpolation for %s"%(chrom))
-				plt.ylabel("Fraction of Chromosome")
-				plt.xlabel("Threshold")
-				plt.savefig("%s_fig.png"%(chrom))
-				plt.clf()
+				plotCoverage(dX, d1, thresh, intF)
 		elif threshMethod == "percent":
 			bThresh = np.percentile(allSignal, pCut, axis=1)
 		else:
