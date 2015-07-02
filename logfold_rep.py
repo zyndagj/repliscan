@@ -1,12 +1,10 @@
 #!/usr/bin/env python
 
-import os,sys
-import math
-import argparse
+import os, sys, math, argparse, gc, colorsys
 import numpy as np
-from multiprocessing import Pool, cpu_count
+from multiprocessing import Pool, cpu_count, Process, Pipe
+import subprocess as sp
 from glob import glob
-import gc
 from copy import deepcopy
 from array import array
 import scipy.optimize
@@ -15,10 +13,7 @@ import scipy.misc
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import colorsys
 
-#myColors = ("#85BEFF", "#986300", "#009863", "#F2EC00", "#F23600", "#C21BFF", "#85FFC7")
-#myColors = ("#0000FF","#00FF00","#FF0000","#FFFF00","#FF00FF","#00FFFF","#F9A70AF")
 myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
@@ -51,6 +46,7 @@ Methods to handle replicates:
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
+	parser.add_argument("--norm", metavar='STR', help="Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="DESeq", type=str)
 	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="threshold", type=str)
 	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
 	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
@@ -66,26 +62,32 @@ Methods to handle replicates:
 	fList = parseIN(args.infile)
 	makeBedgraph(fList, args.F, args.S, args.C.lower())
 	chromDict = readFAI(fai)
-	run_logFC(fList)
+	run_logFC(fList, args.norm)
 	smooth(args.L, fList, chromDict)
 	gc.collect()
 	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.T, args.P, args.seg)
 	print "Done"
 
-def printMem():
+def memAvail(p=0.8):
 	mem_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_AVPHYS_PAGES')  # e.g. 4015976448
 	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
-	print "Memory:",mem_gib
+	return int(mem_gib*p)
 
-def run_logFC(fList, thresh=2.5):
+def run_logFC(fList, normMethod, thresh=2.5):
 	print fList
 	beds = map(lambda y: y[1]+".bedgraph", fList)
 	if not os.path.exists(fList[1][1]+"_logFC.bedgraph"):
 		print "Making LogFold Files From:", beds
 		L, naVals = processFiles(beds)
 		gc.collect()
-		threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
-		normVals = normalize(naVals)
+		#threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
+		# Dont think I need to do this anymore
+		if normMethod == 'DESeq':
+			normVals = DENormalize(naVals)
+		elif normMethod == 'Coverage':
+			normVals = covNorm(naVals)
+		else:
+			sys.exit("%s is not a valid normalization method."%(normMethod))
 		for bIndex in xrange(1,len(beds)):
 			outName = fList[bIndex][1]+"_logFC.bedgraph"
 			if not os.path.exists(outName):
@@ -101,17 +103,32 @@ def run_logFC(fList, thresh=2.5):
 		del subV, lVals, L, normVals
 	gc.collect()
 
-def threshVals(vals, thresh):
-	lgz = vals > 0
-	minVal = np.percentile(vals[lgz], thresh)
-	lmin = np.logical_and(vals < minVal, lgz)
-	vals[lmin] = minVal
+#def threshVals(vals, thresh):
+#	lgz = vals > 0
+#	minVal = np.percentile(vals[lgz], thresh)
+#	lmin = np.logical_and(vals < minVal, lgz)
+#	vals[lmin] = minVal
 
-def normalize(vals):
+def covNorm(vals):
+	'''
+	Normalize the counts by setting genomic coverage to 1.
+
+	>>> covNorm(np.ones(6).reshape(2,3))
+	array([[ 1.,  1.,  1.],
+               [ 1.,  1.,  1.]])
+	>>> covNorm(np.arange(6).reshape(2,3))
+	array([[ 0.  ,  1.  ,  2.  ],
+	       [ 0.75,  1.  ,  1.25]])
+	'''
+	sums = np.sum(vals,axis=1,dtype=np.long)
+	nVals = vals.shape[1]
+	return (vals*float(nVals)/(sums.reshape(4,1)))
+
+def DENormalize(vals):
 	'''
 	Normalize the counts using DESeq's method
 
-	>>> np.round(normalize(np.array([[1,2,3],[4,5,6]])),2)
+	>>> np.round(DENormalize(np.array([[1,2,3],[4,5,6]])),2)
 	array([[ 1.58,  3.16,  4.74],
 		   [ 2.53,  3.16,  3.79]])
 	'''
@@ -222,34 +239,108 @@ def parseIN(inFile):
 		fList.append((tuple(tmp[1:]), tmp[0]))
 	return fList
 
+def sortWorker(inFile, chrom, nCols, conn, OF):
+	bedHeap = []
+	bPipe = sp.Popen('grep "^%s\s" %s'%(chrom, inFile), shell=True, stdout=sp.PIPE).stdout
+	if nCols == 3:
+		for line in bPipe:
+			tmp = line.rstrip('\n').split('\t')
+			s = int(tmp[1])
+			e = int(tmp[2])
+			bedHeap.append((s,e))
+	else:
+		for line in bPipe:
+			tmp = line.rstrip('\n').split('\t')
+			s = int(tmp[1])
+			e = int(tmp[2])
+			o = '\t'.join(tmp[3:])
+			bedHeap.append((s,e,o))
+	bPipe.close()
+	bedHeap.sort(key=lambda y: y[0])
+	msg = conn.recv()
+	if nCols == 3:
+		for s,e in bedHeap:
+			OF.write("%s\t%i\t%i\n"%(chrom,s,e))
+	else:
+		for s,e,o in bedHeap:
+			OF.write("%s\t%i\t%i\t%s\n"%(chrom,s,e,o))
+	OF.flush()
+
+def sortBED(inFile, sortedChroms, outFile=""):
+	#sortedChroms = getSortedChroms(inFile)
+	nCols = open(inFile,'r').readline().count('\t')+1
+	if nCols < 3:
+		sys.exit("Not a bed")
+	if outFile:
+		OF = open(outFile,'w')
+	else:
+		OF = sys.stdout
+	pipes = []
+	procs = []
+	for chrom in sortedChroms:
+		pConn, cConn = Pipe()
+		pipes.append(pConn)
+		procs.append(Process(target=sortWorker, args=(inFile, chrom, nCols, cConn, OF)))
+		procs[-1].start()
+	for i in xrange(len(sortedChroms)):
+		pipes[i].send(True)
+		procs[i].join()
+	OF.close()
+
+def bamtobed(bam):
+	bamBed = os.path.splitext(bam)[0]+'.bed'
+	if not os.path.exists(bamBed):
+		os.system("bedtools bamtobed -i %s | cut -f 1-3 > %s"%(bam, bamBed))
+	return True
+
 def makeBedgraph(fList, fasta, size, replicates):
 	fai = fasta+".fai"
-	bed = "%s.%i.bed"%(fasta,size)
+	faiBed = "%s.%i.bed"%(fasta,size)
+	sortedChroms = sorted(readFAI(fai).keys())
+	memG = memAvail()
 	if not os.path.exists(fai):
 		print "Making fai index"
 		os.system("samtools faidx %s"%(fasta))
-	else: print "%s exists already"%(fai)
-	if not os.path.exists(bed):
-		print "Making %ibp window bed"%(size)
-		os.system("bedtools makewindows -g %s -w %i | sort -S 20G -k1,1 -k2,2n > %s"%(fai,size,bed))
-	else: print "%s exists already"%(bed)
+	if not os.path.exists(faiBed):
+		print "Making %ibp window bed from FAI"%(size)
+		os.system("bedtools makewindows -g %s -w %i | sort -S %iG -k1,1 -k2,2n > %s"%(fai,size,memG,faiBed))
+	## generate sorted beds
+	bamList = []
+	for bams, prefix in fList:
+		for bam in bams:
+			bamBed = os.path.splitext(bam)[0]+'.bed'
+			if not os.path.exists(bamBed):
+				bamList.append(bam)
+	if len(bamList) > 0:
+		p = Pool(min((cpu_count(),len(bamList))))
+		ret = p.map(bamtobed, bamList)
+		p.close()
+		p.join()
+		for bam in bamList:
+			bamBed = os.path.splitext(bam)[0]+'.bed'
+			print "Generating %s"%(bamBed)
+			sortBED(bamBed, sortedChroms, 'tmp.bed')
+			os.system("mv tmp.bed %s"%(bamBed))
+	## generate bedgraphs
 	for bams, prefix in fList:
 		finalBG = prefix+'.bedgraph'
 		if not os.path.exists(finalBG):
 			if len(bams) == 1:
-				bam = bams[0]
-				print "Generating intersect for %s"%(bams)
-				os.system("bedtools bamtobed -i %s | cut -f 1-3 | sort -S 20G -k1,1 -k2,2n | bedtools intersect -a %s -b stdin -c -sorted > %s"%(bam,bed,finalBG))
+				bamBed = os.path.splitext(bams[0])[0]+'.bed'
+				print "Generating intersect for %s"%(bamBed)
+				os.system("bedtools intersect -a %s -b %s -c -sorted > %s"%(faiBed,bamBed,finalBG))
 			else:
 				bgs = []
 				for bam in bams:
-					print "Generating intersect for %s"%(bam)
-					bg = bam+'.bedgraph'
-					if not os.path.exists(bg):
-						os.system("bedtools bamtobed -i %s | cut -f 1-3 | sort -S 20G -k1,1 -k2,2n | bedtools intersect -a %s -b stdin -c -sorted > %s"%(bam,bed,bg))
+					bamBase = os.path.splitext(bam)[0]
+					bamBed = bamBase+'.bed'
+					print "Generating intersect for %s"%(bamBed)
+					bg = bamBase+'.bedgraph'
+					os.system("bedtools intersect -a %s -b %s -c -sorted > %s"%(faiBed,bamBed,bg))
 					bgs.append(bg)
 				bgStr = ' '.join(bgs)
-				os.system("sort -m -S 20G -k1,1 -k2,2n %s | bedtools map -a %s -b stdin -c 4 -o %s > %s && rm %s"%(bgStr, bed, replicates, finalBG, bgStr))
+				print "Merging\n- "+'\n- '.join(bgs)
+				os.system("sort -m -S %iG -k1,1 -k2,2n %s | bedtools map -a %s -b stdin -c 4 -o %s > %s && rm %s"%(memG, bgStr, faiBed, replicates, finalBG, bgStr))
 
 def parseLocations(chroms):
 	ctmp = ""
@@ -323,12 +414,13 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=
 			if plotCov:
 				plotCoverage(dX, d1, thresh, intF)
 		elif threshMethod == "percent":
-			bThresh = np.percentile(allSignal, pCut, axis=1)
+			thresh = np.percentile(allSignal, pCut)
+			#bThresh = np.percentile(allSignal, pCut, axis=1) 
 		else:
 			sys.exit("invalid threshold method")
 		for i in xrange(len(beds)):
-			if threshMethod == "percent":
-				thresh = bThresh[i]
+			#if threshMethod == "percent":
+			#	thresh = bThresh[i]
 			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)

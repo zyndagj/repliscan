@@ -39,6 +39,7 @@ The following binaries need to exist on the user's PATH:
 |-L|INT|The level of smoothing to use \[1,5\] \(Default: 2\)|
 |-S|INT|The size of each window in the bedgraphs \(Default: 500\)|
 |-C|STR|How to handle replicates \(Default: sum\)|
+|--norm|STR|Normalization Method \(DESeq\|Coverage\) \(Default: DESeq\)|
 |--rep|STR|Replicating Method \(threshold\|auto\|percent\) \(Default: threshold\)|
 |--seg|STR|Segmentation Method \(binary\|proportion\) \(Default: binary\)|
 |-T|Float|Threshold Level \(Default: 0.0\)|
@@ -61,6 +62,10 @@ ES	ES_001.bam
 MS	MS_001.bam	MS_L1.bam	MS_L2.bam
 LS	LS.bam
 ```
+
+### Normalization Methods
+- `DESeq` - DESeq size normalization using geometric mean.
+- `Coverage` - Transform each sample to 1X coverage.
 
 ### Replication Methods
 - `threshold` - A log(ratio) above threshold (T) is considered replicating.
