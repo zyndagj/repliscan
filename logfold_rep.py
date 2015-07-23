@@ -463,10 +463,10 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=
 		OS.close()
 
 def hsvClass(eml):
+	## todo change this to a geometry that can handle any number of dimensions instead of 3
 	mV = np.max(eml)
 	e,m,l = eml/mV
 	h,s,v = colorsys.rgb_to_hsv(e,m,l)
-	#print eml, (e,m,l), (h,s,v)
 	if s < 0.1 or v < 0.1:
 		return np.array([1,1,1],dtype=np.bool) #EML
 	points = np.arange(0,361,60)/360.0
@@ -500,11 +500,21 @@ def powerSet(L):
 		return ret+[i+[A[0]] for i in ret]
 	return powerHelp(L)[1:]
 
-def haarVec(vals, p=80):
+def haarVec(vals, p=90):
+	'''
+	Performs a Haar wavelet transformation on the array,
+	removes the lower p% of the values, and then
+	inverse transforms the remaining values.
+
+	>>> haarVec([1,2,5,1,2,3,4,0,7,3,2,1])
+	[ 2.25  2.25  2.25  2.25  2.25  2.25  2.25  2.25  5.    5.    1.5   1.5 ]
+	'''
+	import pywt
 	hC = pywt.wavedec(vals,'haar')
-	cutVal = np.percentile(np.abs(np.concatenate(hC)), p)
-	for A in hC:
-		A[np.abs(A) < cutVal] = 0
+	## Updated to not count the average (val 0)
+	cutVal = np.percentile(np.abs(np.concatenate(hC[1:])), p)
+	for A in hC[1:]: ## skip 0 (overall average)
+		A[np.abs(A) <= cutVal] = 0
 	tVals = pywt.waverec(hC,'haar')
 	return tVals[:len(vals)]
 
