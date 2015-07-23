@@ -74,7 +74,6 @@ def memAvail(p=0.8):
 	return int(mem_gib*p)
 
 def run_logFC(fList, normMethod, thresh=2.5):
-	print fList
 	beds = map(lambda y: y[1]+".bedgraph", fList)
 	if not os.path.exists(fList[1][1]+"_logFC.bedgraph"):
 		print "Making LogFold Files From:", beds
@@ -359,7 +358,6 @@ def parseLocations(chroms):
 def fMissingCoverage(t, allSignal):
 	max = allSignal.shape[1]
 	ret= np.mean(np.sum(np.any(allSignal > t, axis=0)))/float(max)
-	print (t,ret)
 	return ret
 
 def plotCoverage(dX, d1, thresh, intF):
@@ -475,16 +473,6 @@ def hsvClass(eml):
 	cIndex = np.argmin(np.abs(points-h))
 	output = np.array([[1,0,0],[1,1,0],[0,1,0],[0,1,1],[0,0,1],[1,0,1],[1,0,0]], dtype=np.bool)
 	return output[cIndex] # [E, EM, M, ML, L]
-
-def mar(nums, totals):
-	P = np.array(nums,dtype=np.float)/np.array(totals,dtype=np.float)
-	N = len(nums)
-	c2 = ss.chi2.ppf(0.95,4)
-	for i in range(N-1):
-		for j in range(i+1,N):
-			V = np.abs(P[i]-P[j])
-			CR = np.sqrt(c2)*np.sqrt((P[i]*(1.0-P[i])/totals[i])+(P[j]*(1.0-P[j])/totals[j]))
-			print i,j,V,CR
 
 def plotCoverage(vals):
 	for thresh in np.arange(0,-10,-0.1):
