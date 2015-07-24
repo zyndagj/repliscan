@@ -46,6 +46,7 @@ Methods to handle replicates:
 	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
 	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
+	parser.add_argument("--use",metavar='STR', help="Data to use for smoothing/segmentation (log|ratio Default: %(default)s)", default="log", type=lambda x: x if x in ('log','ratio') else sys.exit(x+" not a valid format"))
 	parser.add_argument("--norm", metavar='STR', help="Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="DESeq", type=str)
 	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="threshold", type=str)
 	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
@@ -62,10 +63,10 @@ Methods to handle replicates:
 	fList = parseIN(args.infile)
 	makeBedgraph(fList, args.F, args.S, args.C.lower())
 	chromDict = readFAI(fai)
-	run_logFC(fList, args.norm)
-	smooth(args.L, fList, chromDict)
+	run_logFC(fList, args.norm, args.use)
+	smooth(args.L, fList, chromDict, args.use)
 	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.T, args.P, args.seg)
+	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.use, args.T, args.P, args.seg)
 	print "Done"
 
 def memAvail(p=0.8):
@@ -73,9 +74,13 @@ def memAvail(p=0.8):
 	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
 	return int(mem_gib*p)
 
-def run_logFC(fList, normMethod, thresh=2.5):
+def run_logFC(fList, normMethod, use):# thresh=2.5):
+	if use == 'log':
+		fSuff = '_logFC.bedgraph'
+	else:
+		fSuff = '_ratio.bedgraph'
 	beds = map(lambda y: y[1]+".bedgraph", fList)
-	if not os.path.exists(fList[1][1]+"_logFC.bedgraph"):
+	if not os.path.exists(fList[1][1]+fSuff):
 		print "Making LogFold Files From:", beds
 		L, naVals = processFiles(beds)
 		gc.collect()
@@ -88,18 +93,21 @@ def run_logFC(fList, normMethod, thresh=2.5):
 		else:
 			sys.exit("%s is not a valid normalization method."%(normMethod))
 		for bIndex in xrange(1,len(beds)):
-			outName = fList[bIndex][1]+"_logFC.bedgraph"
+			outName = fList[bIndex][1]+fSuff
 			if not os.path.exists(outName):
 				print "Making %s"%(outName)
 				OF = open(outName,'w')
-				subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
-				lVals = np.log2(subV)
+				if use == 'log':
+					subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
+					lVals = np.log2(subV)
+				else:
+					lVals = normVals[bIndex,:]/(normVals[0,:]+1.0)
 				for i in xrange(len(L[0])):
 					outStr = '%s\t%i\t%i\t%.4f\n' % (L[0][i], L[1][i], L[2][i], lVals[i])
-					#outStr = '\t'.join(map(str, locations[i]+[lVals[i]]))
 					OF.write(outStr)
 				OF.close()
-		del subV, lVals, L, normVals
+		if use == "log": del subV
+		del lVals, L, normVals
 	gc.collect()
 
 #def threshVals(vals, thresh):
@@ -164,9 +172,13 @@ def parseVals(inFile):
 		vals.append(float(tmp[3]))
 	return vals
 
-def smooth(level, fList, chromDict):
+def smooth(level, fList, chromDict, use):
 	sortedChroms = sorted(chromDict.keys()[:])
-	beds = map(lambda y: y[1]+"_logFC.bedgraph", fList[1:])
+	if use == 'log':
+		fSuff = '_logFC.bedgraph'
+	else:
+		fSuff = '_ratio.bedgraph'
+	beds = map(lambda y: y[1]+fSuff, fList[1:])
 	print "Smoothing:",beds
 	for bed in beds:
 		outFile = '%s_%i.smooth.bedgraph'%(bed.rstrip('.bedgraph'),level)
@@ -376,9 +388,10 @@ def plotCoverage(dX, d1, thresh, intF):
 	plt.savefig("%s_fig.png"%(chrom))
 	plt.clf()
 
-def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, thresh=0.0, pCut=2.0, segMeth="binary"):
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, pCut=2.0, segMeth="binary"):
 	sortedChroms = sorted(chromDict.keys()[:])
-	beds = map(lambda y: "%s_logFC_%i.smooth.bedgraph"%(y[1],level), fList[1:])
+	fSuff = {'log':'logFC', 'ratio':'ratio'}
+	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
 	for name in names:
 		outGFF = '%s_logFC_%i.smooth.gff3'%(name,level)
