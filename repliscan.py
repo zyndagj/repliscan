@@ -394,9 +394,9 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
 	for name in names:
-		outGFF = '%s_logFC_%i.smooth.gff3'%(name,level)
+		outGFF = '%s_%s_%i.smooth.gff3'%(name, fSuff[use], level)
 		open(outGFF,'w').write('##gff-version 3\n#track name="%s LogFold %ibp" gffTags=on\n' % (name,S))
-		open("logFC_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
+		open(fSuff[use]+"_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
 	print "Parsing :",beds
 	L, vals = processFiles(beds)
 	locDict = parseLocations(L[0])
@@ -430,9 +430,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 		else:
 			sys.exit("invalid threshold method")
 		for i in xrange(len(beds)):
-			#if threshMethod == "percent":
-			#	thresh = bThresh[i]
-			outGFF = '%s_logFC_%i.smooth.gff3'%(names[i],level)
+			outGFF = '%s_%s_%i.smooth.gff3'%(names[i], fSuff[use], level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
 			bMask[outSignal > thresh] = 1
@@ -458,7 +456,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 			pass
 		else:
 			sys.exit("invalid segmentation method: "+segMeth)
-		OS = open('logFC_segmentation.gff3','a')
+		OS = open(fSuff[use]+'_segmentation.gff3','a')
 		count = 1
 		setSigI = set(range(len(names)))
 		for s in powerSet(range(len(names))):
