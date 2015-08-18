@@ -450,8 +450,9 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 				vRow[maskRow == 0] = 0.0
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
-					hsvRow = hsvClass(vRow)
-					maskM[:,i] = hsvRow
+					propRow = classProportion(vRow)
+					#propRow = hsvClass(vRow)
+					maskM[:,i] = propRow
 		elif segMeth == "binary":
 			pass
 		else:
@@ -474,66 +475,48 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 		OS.close()
 
 def classProportion(dataRow, emlSize = 0.1):
-	print "===================================="
-	maxVal = np.max(dataRow,dtype=np.float)
+	maxVal = np.float(np.max(dataRow))
 	maxInd = np.argmax(dataRow)
 	tRow = dataRow/float(maxVal)
 	nd = len(dataRow)
 	ndm1 = nd-1
 	emlVol = emlSize**ndm1
 	emlCut = 1.0-emlSize
-	otherSpaces = 2^ndm1-1
+	otherSpaces = 2.0**ndm1-1.0
 	firstCut = ((1.0-emlVol)/otherSpaces)**(1.0/ndm1)
 	out = np.zeros(nd, dtype=np.bool)
-	print tRow
 	if np.all(tRow > (1.0-emlSize)):
 		return np.ones(nd, dtype=np.bool)
 	out[tRow > emlCut] = 1
 	for i in range(ndm1):
 		for j in range(i+1,nd):
-			print [i,j]
-			if not np.all(out[[i,j]]):
-				if np.all(tRow[[i,j]] > firstCut):
-					print "All greater than first cut"
-					if tRow[i] == tRow[j]:
-						out[[i,j]] = 1
-					elif tRow[i] > tRow[j]:
-						print i, tRow[i], tRow[j]
-						out[i] = 1
-					else:
-						print j, tRow[j], tRow[i]
-						out[j] = 1
-				else:
-					print "Not all greater"
-					if tRow[i] > firstCut:
-						print i, tRow[i], firstCut
-						out[i] = 1
-					if tRow[j] > firstCut:
-						print j, tRow[j], firstCut
-						out[j] = 1
+			if np.all(out[[i,j]]):
+				pass
+			elif np.all(tRow[[i,j]] > firstCut):
+				if tRow[i] > tRow[j]:
+					out[i] = 1
+				elif tRow[j] > tRow[i]:
+					out[j] = 1
+			else:
+				out[[i,j]][tRow[[i,j]] > firstCut] = 1
 	return out
 
-def hsvClass(eml):
-	## todo change this to a geometry that can handle any number of dimensions instead of 3
+def hsvClass(eml, verbose=False):
 	mV = float(np.max(eml))
 	e,m,l = eml/mV
 	h,s,v = colorsys.rgb_to_hsv(e,m,l)
-	print "EML:",(e,m,l)
-	print "RGB:",np.array((e,m,l))*255
-	print "HSV:",(h,s,v)
-	if s < 0.1 or v < 0.1:
+	if s < 0.5 or v < 0.1:
 		return np.array([1,1,1],dtype=np.bool) #EML
 	points = np.arange(0,361,60)/360.0
-	print "Points:",points
 	diff = np.round(np.abs(points-h),5)
-	print "Diff:",diff
 	minVal = np.min(diff)
 	output = np.array([[1,0,0],[1,1,0],[0,1,0],[0,1,1],[0,0,1],[1,0,1],[1,0,0]], dtype=np.bool)
-	print "Choices:",map(lambda x: ''.join(map(str,map(int,x))), output)
 	# [E, EM, M, ML, L]
-	#print np.any(output[diff==minVal], axis=0)
+	if verbose:
+		print "EML:",(e,m,l),"\nRGB:",np.array((e,m,l))*255,"\nHSV:",(h,s,v)
+		print "Points:",points,"\nDiff:",diff
+		print "Choices:",map(lambda x: ''.join(map(str,map(int,x))), output)
 	return np.any(output[np.abs(diff-minVal) < 0.0001], axis=0)
-	#return output[cIndex
 
 def powerSet(L):
 	'''
