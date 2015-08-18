@@ -372,17 +372,17 @@ def fMissingCoverage(t, allSignal):
 	ret= np.mean(np.sum(np.any(allSignal > t, axis=0)))/float(max)
 	return ret
 
-def plotCoverage(dX, d1, thresh, intF):
+def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.figure(1)
 	plt.subplot(211)
 	plt.plot(dX,intF(dX))
 	plt.axvline(x=thresh,color="red")
-	plt.title("Cubic Interpolation of %s Coverage"%(chrom))
+	plt.title("Cubic Interpolation of %s Coverage @ %.2f"%(chrom, thresh))
 	plt.ylabel("Fraction of Chromosome")
 	plt.subplot(212)
 	plt.plot(dX,d1)
 	plt.axvline(x=thresh,color="red")
-	plt.title("Derivative of Interpolation for %s"%(chrom))
+	plt.title("Derivative of Interpolation for %s @ %.2f"%(chrom, thresh))
 	plt.ylabel("Fraction of Chromosome")
 	plt.xlabel("Threshold")
 	plt.savefig("%s_fig.png"%(chrom))
@@ -423,7 +423,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 			except:
 				thresh = 0.0
 			if plotCov:
-				plotCoverage(dX, d1, thresh, intF)
+				plotCoverage(dX, d1, thresh, intF, chrom)
 		elif threshMethod == "percent":
 			thresh = np.percentile(allSignal, pCut)
 			#bThresh = np.percentile(allSignal, pCut, axis=1) 
@@ -473,23 +473,67 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 				count += 1
 		OS.close()
 
+def classProportion(dataRow, emlSize = 0.1):
+	print "===================================="
+	maxVal = np.max(dataRow,dtype=np.float)
+	maxInd = np.argmax(dataRow)
+	tRow = dataRow/float(maxVal)
+	nd = len(dataRow)
+	ndm1 = nd-1
+	emlVol = emlSize**ndm1
+	emlCut = 1.0-emlSize
+	otherSpaces = 2^ndm1-1
+	firstCut = ((1.0-emlVol)/otherSpaces)**(1.0/ndm1)
+	out = np.zeros(nd, dtype=np.bool)
+	print tRow
+	if np.all(tRow > (1.0-emlSize)):
+		return np.ones(nd, dtype=np.bool)
+	out[tRow > emlCut] = 1
+	for i in range(ndm1):
+		for j in range(i+1,nd):
+			print [i,j]
+			if not np.all(out[[i,j]]):
+				if np.all(tRow[[i,j]] > firstCut):
+					print "All greater than first cut"
+					if tRow[i] == tRow[j]:
+						out[[i,j]] = 1
+					elif tRow[i] > tRow[j]:
+						print i, tRow[i], tRow[j]
+						out[i] = 1
+					else:
+						print j, tRow[j], tRow[i]
+						out[j] = 1
+				else:
+					print "Not all greater"
+					if tRow[i] > firstCut:
+						print i, tRow[i], firstCut
+						out[i] = 1
+					if tRow[j] > firstCut:
+						print j, tRow[j], firstCut
+						out[j] = 1
+	return out
+
 def hsvClass(eml):
 	## todo change this to a geometry that can handle any number of dimensions instead of 3
-	mV = np.max(eml)
+	mV = float(np.max(eml))
 	e,m,l = eml/mV
 	h,s,v = colorsys.rgb_to_hsv(e,m,l)
+	print "EML:",(e,m,l)
+	print "RGB:",np.array((e,m,l))*255
+	print "HSV:",(h,s,v)
 	if s < 0.1 or v < 0.1:
 		return np.array([1,1,1],dtype=np.bool) #EML
 	points = np.arange(0,361,60)/360.0
-	cIndex = np.argmin(np.abs(points-h))
+	print "Points:",points
+	diff = np.round(np.abs(points-h),5)
+	print "Diff:",diff
+	minVal = np.min(diff)
 	output = np.array([[1,0,0],[1,1,0],[0,1,0],[0,1,1],[0,0,1],[1,0,1],[1,0,0]], dtype=np.bool)
-	return output[cIndex] # [E, EM, M, ML, L]
-
-def plotCoverage(vals):
-	for thresh in np.arange(0,-10,-0.1):
-		print vals.shape
-		print np.sum(vals > thresh, axis=1).shape
-	sys.exit()
+	print "Choices:",map(lambda x: ''.join(map(str,map(int,x))), output)
+	# [E, EM, M, ML, L]
+	#print np.any(output[diff==minVal], axis=0)
+	return np.any(output[np.abs(diff-minVal) < 0.0001], axis=0)
+	#return output[cIndex
 
 def powerSet(L):
 	'''
