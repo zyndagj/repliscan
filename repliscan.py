@@ -86,6 +86,8 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 		gc.collect()
 		#threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
 		# Dont think I need to do this anymore
+		# Remove coverage levels below 2.5% and above 97.5%
+		removeLowCoverage(naVals)
 		if normMethod == 'DESeq':
 			normVals = DENormalize(naVals)
 		elif normMethod == 'Coverage':
@@ -105,7 +107,8 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 				else:
 					lVals = np.zeros(normVals.shape[1])
 					lVals[gtZero] = normVals[bIndex,gtZero]/(normVals[0,gtZero])
-					lVals[whereZero] = normVals[bIndex,whereZero]
+					# decided to remove the control=zero areas
+					#lVals[whereZero] = normVals[bIndex,whereZero]
 				for i in xrange(len(L[0])):
 					outStr = '%s\t%i\t%i\t%.4f\n' % (L[0][i], L[1][i], L[2][i], lVals[i])
 					OF.write(outStr)
@@ -119,6 +122,23 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 #	minVal = np.percentile(vals[lgz], thresh)
 #	lmin = np.logical_and(vals < minVal, lgz)
 #	vals[lmin] = minVal
+
+def removeLowCoverage(vals, cut=5.0):
+	'''
+	Remove  2.5% > sqrt(coverage) > 97.5%
+	
+	I originally investigated the possibility of using
+	a poisson distribution or a skewed normal, but the
+	poisson wasn't appropriate for these coverage levels
+	even with the sqrt transform, and the skewed normal
+	was skewed too much by the maximum values. A regular
+	normal distribution on the sqrt transform ended up
+	matching the data the best.
+	'''
+	print "Removing %.1f\% > sqrt(coverage) > %.2f" % (cut/2.0, 1-cut/2.0)
+	sqrtVals = np.sqrt(vals)
+	print sqrtVals.shape
+	print np.percentile(sqrtVals, 2.5, axis=1)
 
 def covNorm(vals):
 	'''
@@ -156,7 +176,8 @@ def processFiles(files):
 	p.join()
 	del p
 	gc.collect()
-	return (parseLocs(files[0]), np.array(vals,dtype=np.float32))
+	locations = parseLocs(files[0])
+	return (locationss, np.array(vals,dtype=np.float32))
 
 def parseLocs(inFile):
 	chroms = []
