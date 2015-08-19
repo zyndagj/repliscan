@@ -92,6 +92,8 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 			normVals = covNorm(naVals)
 		else:
 			sys.exit("%s is not a valid normalization method."%(normMethod))
+		gtZero = normVals[0,:] > 0.0
+		whereZero = normVals[0,:] == 0.0
 		for bIndex in xrange(1,len(beds)):
 			outName = fList[bIndex][1]+fSuff
 			if not os.path.exists(outName):
@@ -101,7 +103,9 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 					subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
 					lVals = np.log2(subV)
 				else:
-					lVals = normVals[bIndex,:]/(normVals[0,:]+1.0)
+					lVals = np.zeros(normVals.shape[1])
+					lVals[gtZero] = normVals[bIndex,gtZero]/(normVals[0,gtZero])
+					lVals[whereZero] = normVals[bIndex,whereZero]
 				for i in xrange(len(L[0])):
 					outStr = '%s\t%i\t%i\t%.4f\n' % (L[0][i], L[1][i], L[2][i], lVals[i])
 					OF.write(outStr)
@@ -128,7 +132,7 @@ def covNorm(vals):
 	       [ 0.75,  1.  ,  1.25]])
 	'''
 	sums = np.sum(vals,axis=1,dtype=np.long)
-	nVals = vals.shape[1]
+	nVals = np.float(vals.shape[1])
 	return (vals*float(nVals)/(sums.reshape(4,1)))
 
 def DENormalize(vals):
