@@ -1,5 +1,6 @@
 # Logfold Reptiming Pipeline
-Pipeline for calculating reptiming enrichment using logfold and Haar wavelet smoothing.
+Pipeline for calculating reptiming enrichment and classifying the the time replication took place.
+
 ## Dependencies
 The following binaries need to exist on the user's PATH:
 
@@ -25,29 +26,20 @@ The following binaries need to exist on the user's PATH:
    $ cd ../bin
    $ cp wavelets [to somewhere on bin path]
    ```
+## Methods
+
+![Workflow DAG](dag.jpg)
 
 ## Running the Pipeline
 
 ### Usage
-`python logfold_rep.py [-h] -F FASTA [-L INT] [-S INT] [-C STR] FILE`
+```
+repliscan.py [-h] -F FASTA [-L INT] [-S INT] [-C STR] [--use STR]      
+             [--norm STR] [--rep STR] [-T Float] [-P Float] [--seg STR]
+             [-t Float] [--low] [--plot] FILE
+```
 
-### Arguments
-
-| Flag | Option | Description |
-|:----:|:------:|:------------|
-|-F|FASTA|The fasta file used for alignment|
-|-L|INT|The level of smoothing to use \[1,5\] \(Default: 2\)|
-|-S|INT|The size of each window in the bedgraphs \(Default: 500\)|
-|-C|STR|How to handle replicates \(Default: sum\)|
-|--norm|STR|Normalization Method \(DESeq\|Coverage\) \(Default: DESeq\)|
-|--rep|STR|Replicating Method \(threshold\|auto\|percent\) \(Default: threshold\)|
-|--seg|STR|Segmentation Method \(binary\|proportion\) \(Default: binary\)|
-|-T|Float|Threshold Level \(Default: 0.0\)|
-|-P|Float|Percent Cut \(Default: 2.0\)|
-|--plot| |Plot Coverage|
-|  |TXT| A text file listing bams for input|
-
-### Input TXT
+### Input TXT - FILE
 Each line of the text file needs to contain a short name describing the sample and then a list of bam files corresponding to that name, all separated by tabs.
 
 For example:
@@ -62,10 +54,44 @@ ES	ES_001.bam
 MS	MS_001.bam	MS_L1.bam	MS_L2.bam
 LS	LS.bam
 ```
+                                                                              
+optional arguments:                                                           
+  --rep STR   Replicating Method (threshold|auto|percent) (Default: threshold)
+  -T Float    Threshold Level (Default: 0.0)                                  
+  -P Float    Percent Cut (Default: 2.0)                                      
+  --seg STR   Segmentation Method (binary|proportion) (Default: binary)       
+  -t Float    Proportion threshold (0,1) (Default: 0.1)                       
+  --low       Remove outlying coverage                                        
+  --plot      Plot Coverage                                                   
+
+
+### Arguments
+
+| Flag | Option | Description - Bold denotes Default|
+|:----:|:------:|:------------|
+|-F|FASTA|The fasta file used for alignment ***Required***|
+|-L|INT|The level of smoothing to use \[1,**2**,3,4,5\]|
+|-S|INT|The size of each window in the bedgraphs - **500**|
+|-C|STR|How to handle replicates \(**sum**\)|
+|--use|STR|Sequencability method to use for smoothing/segmentation \(**log**\|ratio\)|
+|--norm|STR|Normalization Method \(**DESeq**\|Coverage\)|
+|--rep|STR|Replicating Method \(**threshold**\|auto\|percent\)|
+|-T|Float|Threshold Level \[-inf, inf\] - **0.0**|
+|-P|Float|Percent Cut \[0,100\] - **2.0**|
+|--seg|STR|Segmentation Method \(**binary**\|proportion\)|
+|-t|Float|Proportion threshold in range \[0,1\] - **0.1**|
+|--low| |Fit a gamma distribution to coverage and remove the upper and lower 2.5% tails|
+|--plot| |Plot Coverage and replication cutoff|
+|  |TXT| A text file listing bams for input ***Required***|
+
+### Sequencability Method
+There are two options to use with the `--use` flag for normalization of sequencability:
+- `log` - log\(sample/control\) *Default*
+- `ratio` - \(sample/control\)
 
 ### Normalization Methods
 - `DESeq` - DESeq size normalization using geometric mean.
-- `Coverage` - Transform each sample to 1X coverage.
+- `Coverage` - Transform each sample to 1X coverage across the genome. This replicates the RPGC normalization method from deepTools.
 
 ### Replication Methods
 - `threshold` - A log(ratio) above threshold (T) is considered replicating.
@@ -74,9 +100,14 @@ LS	LS.bam
 
 ### Segmentation Methods
 - `binary` - Time classifications are combined on a binary basis.
-- `proportion` - Time classifications are determined based on proportion (HSV).
+- `proportion` - Time classifications are determined based on proportion.
 
 ### Handling Replicates
+If you have replicates in your input file,
+```
+MS	MS_001.bam	MS_L1.bam	MS_L2.bam
+```
+you can specify the method by which they are aggregated with the `-C` paramter. This accepts the following methods:
   - sum (Default)                                    
   - median                                           
   - mean                                             
@@ -87,7 +118,7 @@ LS	LS.bam
 | File | Description |
 |:----:|-------------|
 |`*.bedgraph`|Bedgraph produced from corresponding bam (not normalized)|
-|`*_logFC.bedgraph`|Bedgraph of signal after dividing control and performing log2 transform|
-|`*_logFC_*.smooth.bedgraph`|Smoothed using specified level of Haar wavelet|
-|`*_logFC_*.smooth.gff3`|GFF showing positive regions|
-|`logFC_segmentation.gff3`| Segmentation GFF|
+|`*_(logFC|ratio).bedgraph`|Bedgraph of signal after dividing control and performing sequencability transform|
+|`*(logFC|ratio)_*.smooth.bedgraph`|Smoothed using specified level of Haar wavelet|
+|`*(logFC|ratio)_*.smooth.gff3`|GFF showing positive regions|
+|`(logFC|ratio)_segmentation.gff3`| Segmentation GFF|
