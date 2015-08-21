@@ -115,10 +115,8 @@ you can specify the method by which they are aggregated with the `-C` paramter. 
   - max                                              
 
 ## Output
-| File | Description |
-|:----:|-------------|
-|`*.bedgraph`|Bedgraph produced from corresponding bam (not normalized)|
-|`*_(logFC|ratio).bedgraph`|Bedgraph of signal after dividing control and performing sequencability transform|
-|`*(logFC|ratio)_*.smooth.bedgraph`|Smoothed using specified level of Haar wavelet|
-|`*(logFC|ratio)_*.smooth.gff3`|GFF showing positive regions|
-|`(logFC|ratio)_segmentation.gff3`| Segmentation GFF|
+ - `*.bedgraph` - Bedgraph produced from corresponding bam (not normalized)
+ - `*_(logFC|ratio).bedgraph` - Bedgraph of signal after dividing control and performing sequencability transform
+ - `*(logFC|ratio)_*.smooth.bedgraph` - Smoothed using specified level of Haar wavelet
+ - `*(logFC|ratio)_*.smooth.gff3` - GFF showing positive regions
+ - `(logFC|ratio)_segmentation.gff3` -  Segmentation GFF
