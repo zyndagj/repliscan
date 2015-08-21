@@ -10,6 +10,7 @@ from array import array
 import scipy.optimize
 import scipy.interpolate
 import scipy.misc
+import scipy.stats as ss
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -49,9 +50,11 @@ Methods to handle replicates:
 	parser.add_argument("--use",metavar='STR', help="Data to use for smoothing/segmentation (log|ratio Default: %(default)s)", default="log", type=lambda x: x if x in ('log','ratio') else sys.exit(x+" not a valid format"))
 	parser.add_argument("--norm", metavar='STR', help="Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="DESeq", type=str)
 	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="threshold", type=str)
-	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
 	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
 	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=2.0, type=float)
+	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
+	parser.add_argument("-t", metavar='Float', help="Proportion threshold (0,1) (Default: %(default)s)", default=0.1, type=float)
+	parser.add_argument("--low", action="store_true", help="Remove outlying coverage")
 	parser.add_argument("--plot", action='store_true', help="Plot Coverage")
 	args = parser.parse_args()
 	if args.C.lower() not in ['sum','median']:
@@ -63,10 +66,10 @@ Methods to handle replicates:
 	fList = parseIN(args.infile)
 	makeBedgraph(fList, args.F, args.S, args.C.lower())
 	chromDict = readFAI(fai)
-	run_logFC(fList, args.norm, args.use)
+	run_logFC(fList, args.norm, args.use, args.low)
 	smooth(args.L, fList, chromDict, args.use)
 	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.use, args.T, args.P, args.seg)
+	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.use, args.T, args.P, args.seg, args.t)
 	print "Done"
 
 def memAvail(p=0.8):
@@ -74,7 +77,7 @@ def memAvail(p=0.8):
 	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
 	return int(mem_gib*p)
 
-def run_logFC(fList, normMethod, use):# thresh=2.5):
+def run_logFC(fList, normMethod, use, low):# thresh=2.5):
 	if use == 'log':
 		fSuff = '_logFC.bedgraph'
 	else:
@@ -87,7 +90,9 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 		#threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
 		# Dont think I need to do this anymore
 		# Remove coverage levels below 2.5% and above 97.5%
-		removeLowCoverage(naVals)
+		times = map(lambda y: y[1], fList)
+		if low:
+			removeLowCoverage(naVals, times)
 		if normMethod == 'DESeq':
 			normVals = DENormalize(naVals)
 		elif normMethod == 'Coverage':
@@ -123,7 +128,7 @@ def run_logFC(fList, normMethod, use):# thresh=2.5):
 #	lmin = np.logical_and(vals < minVal, lgz)
 #	vals[lmin] = minVal
 
-def removeLowCoverage(vals, cut=5.0):
+def removeLowCoverage(vals, names, cut=0.05):
 	'''
 	Remove  2.5% > sqrt(coverage) > 97.5%
 	
@@ -134,11 +139,37 @@ def removeLowCoverage(vals, cut=5.0):
 	was skewed too much by the maximum values. A regular
 	normal distribution on the sqrt transform ended up
 	matching the data the best.
+
+	Normal distribution also didn't fit the data well. The
+	lows were negative and the upper was too large because
+	of the skew. Decded to just take the percentiles of the
+	raw data. This was bad because it just took the the
+	first and last 2.5% of the values.
+
+	Found out the data looks poisson with a log transform.
 	'''
-	print "Removing %.1f\% > sqrt(coverage) > %.2f" % (cut/2.0, 1-cut/2.0)
-	sqrtVals = np.sqrt(vals)
-	print sqrtVals.shape
-	print np.percentile(sqrtVals, 2.5, axis=1)
+	lowerP = cut/2.0
+	upperP = 1.0-lowerP
+	print "Removing %.1f%% > coverage > %.1f%%" % (lowerP*100, upperP*100)
+	for i in range(vals.shape[0]):
+		plt.figure(i)
+		logNZ = np.log(vals[i,vals[i,:] > 0])
+		n, b, p = plt.hist(logNZ, label="Data", bins=100, normed=True)
+		yMax = np.max(n)
+		gShape, gLoc, gScale = ss.gamma.fit(logNZ)
+		plt.xlim(0,max(logNZ))
+		plt.ylim(0,yMax)
+		X = np.arange(0, max(logNZ), 0.1)
+		lowerCut, upperCut = ss.gamma.ppf([lowerP, upperP], gShape, gLoc, gScale)
+		plt.plot(X, ss.gamma.pdf(X,gShape, gLoc, gScale), label="Gamma Fit")
+		plt.legend()
+		plt.fill_between(X, 0, yMax, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
+		plt.title("%s Coverage Cut"%(names[i]))
+		plt.xlabel("log(Reads/Bin)")
+		plt.ylabel("%")
+		plt.savefig('%s_coverage_cut.png'%(names[i]))	
+		vals[i,vals[i,:] < np.exp(lowerCut)] = 0
+		vals[i,vals[i,:] > np.exp(upperCut)] = 0
 
 def covNorm(vals):
 	'''
@@ -177,7 +208,7 @@ def processFiles(files):
 	del p
 	gc.collect()
 	locations = parseLocs(files[0])
-	return (locationss, np.array(vals,dtype=np.float32))
+	return (locations, np.array(vals,dtype=np.float32))
 
 def parseLocs(inFile):
 	chroms = []
@@ -401,6 +432,7 @@ def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.figure(1)
 	plt.subplot(211)
 	plt.plot(dX,intF(dX))
+	plt.ylim(0,1)
 	plt.axvline(x=thresh,color="red")
 	plt.title("Cubic Interpolation of %s Coverage @ %.2f"%(chrom, thresh))
 	plt.ylabel("Fraction of Chromosome")
@@ -413,7 +445,7 @@ def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.savefig("%s_fig.png"%(chrom))
 	plt.clf()
 
-def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, pCut=2.0, segMeth="binary"):
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut, segMeth, propThresh):
 	sortedChroms = sorted(chromDict.keys()[:])
 	fSuff = {'log':'logFC', 'ratio':'ratio'}
 	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
@@ -444,7 +476,10 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 			dX = np.arange(asMin,asMax,0.01)
 			d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
 			try:
-				thresh = dX[np.min(np.where(np.abs(d1)>0.01))]
+				locMax = np.argmax(np.abs(d1))
+				lowerLocs = np.where(np.abs(d1) < 0.1)[0]
+				belowLocal = lowerLocs[lowerLocs < locMax]
+				thresh = dX[np.max(belowLocal)]
 			except:
 				thresh = 0.0
 			if plotCov:
@@ -475,7 +510,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh=0.0, 
 				vRow[maskRow == 0] = 0.0
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
-					propRow = classProportion(vRow)
+					propRow = classProportion(vRow, propThresh)
 					#propRow = hsvClass(vRow)
 					maskM[:,i] = propRow
 		elif segMeth == "binary":
