@@ -44,15 +44,15 @@ Methods to handle replicates:
   - max''')
 	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
 	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
-	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=2, type=int)
-	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=500, type=int)
+	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=3, type=int)
+	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=1000, type=int)
 	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
-	parser.add_argument("--use",metavar='STR', help="Data to use for smoothing/segmentation (log|ratio Default: %(default)s)", default="log", type=lambda x: x if x in ('log','ratio') else sys.exit(x+" not a valid format"))
-	parser.add_argument("--norm", metavar='STR', help="Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="DESeq", type=str)
-	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="threshold", type=str)
+	parser.add_argument("--use",metavar='STR', help="Data to use for smoothing/segmentation (log|ratio Default: %(default)s)", default="ratio", type=lambda x: x if x in ('log','ratio') else sys.exit(x+" not a valid format"))
+	parser.add_argument("--norm", metavar='STR', help="Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="Coverage", type=str)
+	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="auto", type=str)
 	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
 	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=2.0, type=float)
-	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="binary", type=str)
+	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="proportion", type=str)
 	parser.add_argument("-t", metavar='Float', help="Proportion threshold (0,1) (Default: %(default)s)", default=0.1, type=float)
 	parser.add_argument("--low", action="store_true", help="Remove outlying coverage")
 	parser.add_argument("--plot", action='store_true', help="Plot Coverage")
@@ -121,12 +121,6 @@ def run_logFC(fList, normMethod, use, low):# thresh=2.5):
 		if use == "log": del subV
 		del lVals, L, normVals
 	gc.collect()
-
-#def threshVals(vals, thresh):
-#	lgz = vals > 0
-#	minVal = np.percentile(vals[lgz], thresh)
-#	lmin = np.logical_and(vals < minVal, lgz)
-#	vals[lmin] = minVal
 
 def removeLowCoverage(vals, names, cut=0.05):
 	'''
@@ -545,7 +539,7 @@ def classProportion(dataRow, emlSize = 0.1):
 	otherSpaces = 2.0**ndm1-1.0
 	firstCut = ((1.0-emlVol)/otherSpaces)**(1.0/ndm1)
 	out = np.zeros(nd, dtype=np.bool)
-	if np.all(tRow > (1.0-emlSize)):
+	if np.all(tRow > emlCut):
 		return np.ones(nd, dtype=np.bool)
 	out[tRow > emlCut] = 1
 	for i in range(ndm1):
@@ -558,7 +552,10 @@ def classProportion(dataRow, emlSize = 0.1):
 				elif tRow[j] > tRow[i]:
 					out[j] = 1
 			else:
-				out[[i,j]][tRow[[i,j]] > firstCut] = 1
+				if tRow[i] > firstCut:
+					out[i] = 1
+				if tRow[j] > firstCut:
+					out[j] = 1
 	return out
 
 def hsvClass(eml, verbose=False):
