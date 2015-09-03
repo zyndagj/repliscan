@@ -500,13 +500,12 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 		if segMeth == "proportion":
 			for i in xrange(np.shape(maskM)[1]):
 				maskRow = maskM[:,i]
-				vRow = allSignal[:,i]-thresh
+				vRow = np.copy(allSignal[:,i])
 				vRow[maskRow == 0] = 0.0
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
-					propRow = classProportion(vRow, propThresh)
-					#propRow = hsvClass(vRow)
-					maskM[:,i] = propRow
+					maskM[:,i] = classProportion(vRow, propThresh)
+					#maskM[:,i] = hsvClass(vRow)
 		elif segMeth == "binary":
 			pass
 		else:
