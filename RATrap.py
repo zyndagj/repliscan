@@ -208,18 +208,15 @@ def readFAI(inFile):
 
 def dist(a,b):
 	'''
-	Calculates the hamming distance between two binary arrays. If either of the
-	arrays has no replication, the distance is returned as 0. To handle the odd
-	cases of EL, EML, and also convey the direction of change I incorporated a
-	change in index mean metric. If the mean of positive indicies is larger in
-	array b, the returned distance is positive. If higher in a, the returned
-	distance is negative.
+	Calculates the shift of the index average between two binary arrays. If
+	either of the arrays has no replication (all zero), the distance is
+	returned as zero.
 
 	   EML  index-mean	returned distance
-	A: 110	0.1		2
+	A: 110	0.5		1.5 - 0.5 = 1
 	B: 011	1.5
 
-	A: 001	2		-2
+	A: 001	2		1 - 2 = -1
 	B: 010	1
 
 	If the mean doesn't change, a distance of zero is returned instead. This will 
@@ -232,22 +229,17 @@ def dist(a,b):
 
 	
 	>>> dist(toBA('ESMS'),toBA('MSLS'))
-	2
+	1
 	>>> dist(toBA('LS'),toBA('MS'))
-	-2
+	-1
 	>>> dist(toBA('ESLS'),toBA('MS'))
 	0
 	'''
 	if np.sum(a) == 0 or np.sum(b) == 0:
 		return 0
-	hammingDistance = np.sum(np.logical_xor(a, b))
 	indexMeanA = np.mean(np.where(a))
 	indexMeanB = np.mean(np.where(b))
-	if indexMeanA < indexMeanB:
-		return hammingDistance
-	elif indexMeanA > indexMeanB:
-		return -hammingDistance
-	return 0
+	return indexMeanB-indexMeanA
 
 def toBA(a):
 	'''
