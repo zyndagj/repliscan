@@ -18,6 +18,16 @@ import matplotlib.pyplot as plt
 myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
 colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
+class argChecker():
+	def __init__(self, options, afterValid):
+		self.options = options
+		self.av = afterValid
+	def check(self, x):
+		if x in self.options:
+			return x
+		else:
+			raise argparse.ArgumentTypeError("%s not a valid %s"%(x, self.av))
+
 def main():
 	parser = argparse.ArgumentParser(description="Performs log-fold analysis on bam files.",formatter_class=argparse.RawDescriptionHelpFormatter, epilog='''\
 Input TXT File:
@@ -44,32 +54,57 @@ Methods to handle replicates:
   - max''')
 	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
 	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
-	parser.add_argument("-L",metavar='INT', help="Smoothing level (Default: %(default)s)", default=3, type=int)
-	parser.add_argument("-S",metavar='INT', help="Bin size (Default: %(default)s)", default=1000, type=int)
-	parser.add_argument("-C",metavar='STR', help="How to handle replicates (Default: %(default)s)", default="sum", type=str)
-	parser.add_argument("--use",metavar='STR', help="Data to use for smoothing/segmentation (log|ratio Default: %(default)s)", default="ratio", type=lambda x: x if x in ('log','ratio') else sys.exit(x+" not a valid format"))
-	parser.add_argument("--norm", metavar='STR', help="Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="Coverage", type=str)
-	parser.add_argument("--rep", metavar='STR', help="Replicating Method (threshold|auto|percent) (Default: %(default)s)", default="auto", type=str)
-	parser.add_argument("-T", metavar='Float', help="Threshold Level (Default: %(default)s)", default=0.0, type=float)
-	parser.add_argument("-P", metavar='Float', help="Percent Cut (Default: %(default)s)", default=2.0, type=float)
-	parser.add_argument("--seg", metavar='STR', help="Segmentation Method (binary|proportion) (Default: %(default)s)", default="proportion", type=str)
-	parser.add_argument("-t", metavar='Float', help="Proportion threshold (0,1) (Default: %(default)s)", default=0.1, type=float)
-	parser.add_argument("--low", action="store_true", help="Remove outlying coverage")
-	parser.add_argument("--plot", action='store_true', help="Plot Coverage")
+	parser.add_argument("-L",metavar='INT', help=\
+		"Smoothing level (Default: %(default)s)", default=3, type=int)
+	parser.add_argument("-S",metavar='INT', help=\
+		"Bin size (Default: %(default)s)", default=1000, type=int)
+	parser.add_argument("-C",metavar='STR', help=\
+		"Replicate reduction method (Default: %(default)s)", default="sum",\
+		type=argChecker(('sum','median','mean','min','max'), 'reducer').check)
+	parser.add_argument("--use",metavar='STR', help=\
+		"Data to use for smoothing/segmentation (log|ratio Default: %(default)s)",\
+		default="ratio", type=argChecker(('log','ratio'),'format').check)
+	parser.add_argument("--norm", metavar='STR', help=\
+		"Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="Coverage",\
+		type=argChecker(('DESeq','Coverage'),'normalization method').check)
+	parser.add_argument("--rep", metavar='STR', help=\
+		"Replication Method (threshold|auto|percent) (Default: %(default)s)", default="auto",\
+		type=argChecker(('threshold','auto','percent'),'replication method').check)
+	parser.add_argument("-T", metavar='Float', help=\
+		"Threshold Level (Default: %(default)s)", default=0.0, type=float)
+	parser.add_argument("-P", metavar='Float', help=\
+		"Percent Cut (Default: %(default)s)", default=2.0, type=float)
+	parser.add_argument("--seg", metavar='STR', help=\
+		"Segmentation Method (binary|proportion) (Default: %(default)s)", default="proportion",\
+		type=argChecker(('binary','proportion'),'segmentation method').check)
+	parser.add_argument("--low", action="store_true",\
+		help="Remove outlying coverage")
+	parser.add_argument("--plot", action='store_true',\
+		help="Plot Statistics")
 	args = parser.parse_args()
-	if args.C.lower() not in ['sum','median']:
-		sys.exit("Please handle replicates using either sum or median methods.")
 	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
 		fai = args.F+'.fai'
 	else:
 		sys.exit("Please specify a fasta file\n")
 	fList = parseIN(args.infile)
+	#####################################################
+	# Convert BAMs to Bedgraph files
+	#####################################################
 	makeBedgraph(fList, args.F, args.S, args.C.lower())
+	#####################################################
+	# Calculate replication ratio
+	#####################################################
 	chromDict = readFAI(fai)
-	run_logFC(fList, args.norm, args.use, args.low)
+	run_logFC(fList, args.norm, args.use, args.low, args.plot)
+	#####################################################
+	# Apply Haar Wavelet
+	#####################################################
 	smooth(args.L, fList, chromDict, args.use)
 	gc.collect()
-	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.use, args.T, args.P, args.seg, args.t)
+	#####################################################
+	# Perform Segmentation
+	#####################################################
+	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.use, args.T, args.P, args.seg)
 	print "Done"
 
 def memAvail(p=0.8):
@@ -77,7 +112,7 @@ def memAvail(p=0.8):
 	mem_gib = mem_bytes/(1024.**3)  # e.g. 3.74
 	return int(mem_gib*p)
 
-def run_logFC(fList, normMethod, use, low):# thresh=2.5):
+def run_logFC(fList, normMethod, use, low, plotCoverage):# thresh=2.5):
 	if use == 'log':
 		fSuff = '_logFC.bedgraph'
 	else:
@@ -92,7 +127,7 @@ def run_logFC(fList, normMethod, use, low):# thresh=2.5):
 		# Remove coverage levels below 2.5% and above 97.5%
 		times = map(lambda y: y[1], fList)
 		if low:
-			removeLowCoverage(naVals, times)
+			removeLowCoverage(naVals, times, plotCoverage)
 		if normMethod == 'DESeq':
 			normVals = DENormalize(naVals)
 		elif normMethod == 'Coverage':
@@ -122,7 +157,7 @@ def run_logFC(fList, normMethod, use, low):# thresh=2.5):
 		del lVals, L, normVals
 	gc.collect()
 
-def removeLowCoverage(vals, names, cut=0.05):
+def removeLowCoverage(vals, names, plotCoverage, cut=0.05):
 	'''
 	Remove  2.5% > sqrt(coverage) > 97.5%
 	
@@ -155,13 +190,14 @@ def removeLowCoverage(vals, names, cut=0.05):
 		plt.ylim(0,yMax)
 		X = np.arange(0, max(logNZ), 0.1)
 		lowerCut, upperCut = ss.gamma.ppf([lowerP, upperP], gShape, gLoc, gScale)
-		plt.plot(X, ss.gamma.pdf(X,gShape, gLoc, gScale), label="Gamma Fit")
-		plt.legend()
-		plt.fill_between(X, 0, yMax, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
-		plt.title("%s Coverage Cut"%(names[i]))
-		plt.xlabel("log(Reads/Bin)")
-		plt.ylabel("%")
-		plt.savefig('%s_coverage_cut.png'%(names[i]))	
+		if plotCoverage:
+			plt.plot(X, ss.gamma.pdf(X,gShape, gLoc, gScale), label="Gamma Fit")
+			plt.legend()
+			plt.fill_between(X, 0, yMax, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
+			plt.title("%s Coverage Cut"%(names[i]))
+			plt.xlabel("log(Reads/Bin)")
+			plt.ylabel("%")
+			plt.savefig('%s_coverage_cut.png'%(names[i]))	
 		vals[i,vals[i,:] < np.exp(lowerCut)] = 0
 		vals[i,vals[i,:] > np.exp(upperCut)] = 0
 
@@ -504,7 +540,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 				vRow[maskRow == 0] = 0.0
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
-					maskM[:,i] = classProportion(vRow, propThresh)
+					maskM[:,i] = classProportion(vRow)
 					#maskM[:,i] = hsvClass(vRow)
 		elif segMeth == "binary":
 			pass
@@ -527,7 +563,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 				count += 1
 		OS.close()
 
-def classProportion(dataRow, emlSize = 0.1):
+def classProportion(dataRow, emlSize = 0.5):
 	maxVal = np.float(np.max(dataRow))
 	maxInd = np.argmax(dataRow)
 	tRow = dataRow/float(maxVal)

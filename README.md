@@ -54,34 +54,23 @@ ES	ES_001.bam
 MS	MS_001.bam	MS_L1.bam	MS_L2.bam
 LS	LS.bam
 ```
-                                                                              
-optional arguments:                                                           
-  --rep STR   Replicating Method (threshold|auto|percent) (Default: threshold)
-  -T Float    Threshold Level (Default: 0.0)                                  
-  -P Float    Percent Cut (Default: 2.0)                                      
-  --seg STR   Segmentation Method (binary|proportion) (Default: binary)       
-  -t Float    Proportion threshold (0,1) (Default: 0.1)                       
-  --low       Remove outlying coverage                                        
-  --plot      Plot Coverage                                                   
-
 
 ### Arguments
 
 | Flag | Option | Description - Bold denotes Default|
 |:----:|:------:|:------------|
 |-F|FASTA|The fasta file used for alignment ***Required***|
-|-L|INT|The level of smoothing to use \[1,**2**,3,4,5\]|
-|-S|INT|The size of each window in the bedgraphs - **500**|
+|-L|INT|The level of smoothing to use \[1,2,**3**,4,5\]|
+|-S|INT|The size of each window in the bedgraphs - **1000**|
 |-C|STR|How to handle replicates \(**sum**\)|
-|--use|STR|Sequencability method to use for smoothing/segmentation \(**log**\|ratio\)|
-|--norm|STR|Normalization Method \(**DESeq**\|Coverage\)|
-|--rep|STR|Replicating Method \(**threshold**\|auto\|percent\)|
+|--use|STR|Sequencability method to use for smoothing/segmentation \(log\|**ratio**\)|
+|--norm|STR|Normalization Method \(DESeq\|**Coverage**\)|
+|--rep|STR|Replicating Method \(threshold\|**auto**\|percent\)|
 |-T|Float|Threshold Level \[-inf, inf\] - **0.0**|
 |-P|Float|Percent Cut \[0,100\] - **2.0**|
-|--seg|STR|Segmentation Method \(**binary**\|proportion\)|
-|-t|Float|Proportion threshold in range \[0,1\] - **0.1**|
-|--low| |Fit a gamma distribution to coverage and remove the upper and lower 2.5% tails|
-|--plot| |Plot Coverage and replication cutoff|
+|--seg|STR|Segmentation Method \(binary\|**proportion**\)|
+|--low| |Fit a gamma distribution to coverage and remove the upper and lower 2.5% tails of coverage|
+|--plot| |Plot Statistics|
 |  |TXT| A text file listing bams for input ***Required***|
 
 ### Sequencability Method
@@ -119,4 +108,4 @@ you can specify the method by which they are aggregated with the `-C` paramter. 
  - `*_(logFC|ratio).bedgraph` - Bedgraph of signal after dividing control and performing sequencability transform
  - `*(logFC|ratio)_*.smooth.bedgraph` - Smoothed using specified level of Haar wavelet
  - `*(logFC|ratio)_*.smooth.gff3` - GFF showing positive regions
- - `(logFC|ratio)_segmentation.gff3` -  Segmentation GFF
+ - `(logFC|ratio)_segmentation.gff3` -  Segmentation GFF, which can be used as `input for RATrap.py`
