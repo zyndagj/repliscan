@@ -26,6 +26,13 @@ The following binaries need to exist on the user's PATH:
    $ cd ../bin
    $ cp wavelets [to somewhere on bin path]
    ```
+4. python
+
+   From Stampede @ TACC
+   ```
+   $ module load python/2.7.9
+   ```
+
 ## Methods
 
 ![Workflow DAG](dag.jpg)
