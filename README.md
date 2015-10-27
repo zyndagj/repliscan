@@ -59,18 +59,18 @@ LS	LS.bam
 
 | Flag | Option | Description - Bold denotes Default|
 |:----:|:------:|:------------|
-|-F|FASTA|The fasta file used for alignment ***Required***|
-|-L|INT|The level of smoothing to use \[1,2,**3**,4,5\]|
-|-S|INT|The size of each window in the bedgraphs - **1000**|
-|-C|STR|How to handle replicates \(**sum**\)|
-|--use|STR|Sequencability method to use for smoothing/segmentation \(log\|**ratio**\)|
-|--norm|STR|Normalization Method \(DESeq\|**Coverage**\)|
-|--rep|STR|Replicating Method \(threshold\|**auto**\|percent\)|
-|-T|Float|Threshold Level \[-inf, inf\] - **0.0**|
-|-P|Float|Percent Cut \[0,100\] - **2.0**|
-|--seg|STR|Segmentation Method \(binary\|**proportion**\)|
-|--low| |Fit a gamma distribution to coverage and remove the upper and lower 2.5% tails of coverage|
-|--plot| |Plot Statistics|
+|`-F`|FASTA|The fasta file used for alignment ***Required***|
+|`-L`|INT|The level of smoothing to use \[1,2,**3**,4,5\]|
+|`-S`|INT|The size of each window in the bedgraphs - **1000**|
+|`-C`|STR|How to handle replicates \(**sum**\)|
+|`--use`|STR|Sequencability method to use for smoothing/segmentation \(log\|**ratio**\)|
+|`--norm`|STR|Normalization Method \(DESeq\|**Coverage**\)|
+|`--rep`|STR|Replicating Method \(threshold\|**auto**\|percent\)|
+|`-T`|Float|Threshold Level \[-inf, inf\] - **0.0**|
+|`-P`|Float|Percent Cut \[0,100\] - **2.0**|
+|`--seg`|STR|Segmentation Method \(binary\|**proportion**\)|
+|`--low`| |Fit a gamma distribution to coverage and remove the upper and lower 2.5% tails of coverage|
+|`--plot`| |Plot Statistics|
 |  |TXT| A text file listing bams for input ***Required***|
 
 ### Sequencability Method
