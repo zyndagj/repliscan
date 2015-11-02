@@ -16,7 +16,7 @@ timeRE = re.compile(r'Name=(([EML]S){1,3})')
 
 def main():
 	parser = argparse.ArgumentParser(description="Finds the timing differences between two segmentation profiles.")
-	parser.add_argument("-d",metavar="INT", help="Minimum distance to be RAT (Default: %(default)s)", default=2, type=int)
+	parser.add_argument("-d",metavar="INT", help="Minimum distance to be RAT (Default: %(default)s)", default=1, type=int)
 	parser.add_argument("-S",metavar="INT", help="Tile Size (Default: %(default)s)", default=1000, type=int)
 	parser.add_argument("-A",metavar="GFF3", help="First Segmentation Profile (mitotic)", required=True)
 	parser.add_argument("-B",metavar="GFF3", help="Second Segmentation Profile (endo)", required=True)
