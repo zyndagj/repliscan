@@ -512,6 +512,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 				thresh = dX[np.max(belowLocal)]
 			except:
 				thresh = 0.0
+			print "%s replication threshold: %.2f"%(chrom, thresh)
 			if plotCov:
 				plotCoverage(dX, d1, thresh, intF, chrom)
 		elif threshMethod == "percent":
