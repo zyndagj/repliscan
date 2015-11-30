@@ -159,7 +159,7 @@ def run_logFC(fList, normMethod, use, low, plotCoverage):# thresh=2.5):
 
 def removeLowCoverage(vals, names, plotCoverage, cut=0.05):
 	'''
-	Remove  2.5% > sqrt(coverage) > 97.5%
+	Remove  2.5% > log(coverage) > 97.5%
 	
 	I originally investigated the possibility of using
 	a poisson distribution or a skewed normal, but the
@@ -214,7 +214,7 @@ def covNorm(vals):
 	'''
 	sums = np.sum(vals,axis=1,dtype=np.long)
 	nVals = np.float(vals.shape[1])
-	return (vals*float(nVals)/(sums.reshape(4,1)))
+	return vals*(float(nVals)/sums.reshape(len(sums),1))
 
 def DENormalize(vals):
 	'''
@@ -222,7 +222,7 @@ def DENormalize(vals):
 
 	>>> np.round(DENormalize(np.array([[1,2,3],[4,5,6]])),2)
 	array([[ 1.58,  3.16,  4.74],
-		   [ 2.53,  3.16,  3.79]])
+	       [ 2.53,  3.16,  3.79]])
 	'''
 	sf = sizeFactors(vals)
 	nA = np.array(vals/np.matrix(sf).T)
@@ -286,9 +286,9 @@ def geometricMean(M):
 	M	numpy array (matrix)
 	
 	>>> geometricMean(np.array([[1,2,3],[4,5,6]]))
-	array([ 2.		,  3.16227766,  4.24264069])
+	array([ 2.        ,  3.16227766,  4.24264069])
 	>>> geometricMean(np.array([[0.1, 1, 2],[10,1,0.2]]))
-	array([ 1.		,  1.		,  0.63245553])
+	array([ 1.        ,  1.        ,  0.63245553])
 	'''
 	return np.prod(M,axis=0)**(1.0/M.shape[0])
 
@@ -475,7 +475,7 @@ def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.savefig("%s_fig.png"%(chrom))
 	plt.clf()
 
-def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut, segMeth, propThresh):
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut, segMeth):
 	sortedChroms = sorted(chromDict.keys()[:])
 	fSuff = {'log':'logFC', 'ratio':'ratio'}
 	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
@@ -541,7 +541,6 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 				rowSum = np.sum(maskRow)
 				if rowSum > 1:
 					maskM[:,i] = classProportion(vRow)
-					#maskM[:,i] = hsvClass(vRow)
 		elif segMeth == "binary":
 			pass
 		else:
@@ -564,6 +563,13 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 		OS.close()
 
 def classProportion(dataRow, emlSize = 0.5):
+	'''
+	Calculates the segmentation class based on the
+	proportion of replication.
+
+	>>> classProportion(np.array([1.0,0.49,0.51]))
+	array([ True, False,  True], dtype=bool)
+	'''
 	maxVal = np.float(np.max(dataRow))
 	maxInd = np.argmax(dataRow)
 	tRow = dataRow/float(maxVal)
@@ -593,35 +599,18 @@ def classProportion(dataRow, emlSize = 0.5):
 					out[j] = 1
 	return out
 
-def hsvClass(eml, verbose=False):
-	mV = float(np.max(eml))
-	e,m,l = eml/mV
-	h,s,v = colorsys.rgb_to_hsv(e,m,l)
-	if s < 0.5 or v < 0.1:
-		return np.array([1,1,1],dtype=np.bool) #EML
-	points = np.arange(0,361,60)/360.0
-	diff = np.round(np.abs(points-h),5)
-	minVal = np.min(diff)
-	output = np.array([[1,0,0],[1,1,0],[0,1,0],[0,1,1],[0,0,1],[1,0,1],[1,0,0]], dtype=np.bool)
-	# [E, EM, M, ML, L]
-	if verbose:
-		print "EML:",(e,m,l),"\nRGB:",np.array((e,m,l))*255,"\nHSV:",(h,s,v)
-		print "Points:",points,"\nDiff:",diff
-		print "Choices:",map(lambda x: ''.join(map(str,map(int,x))), output)
-	return np.any(output[np.abs(diff-minVal) < 0.0001], axis=0)
-
 def powerSet(L):
 	'''
 	Removes the empty list from powerset
 
-	>>> powerSet([1,2])
+	>>> powerSet([0,1])
 	[[1], [0], [1, 0]]
 	'''
 	def powerHelp(A):
 		'''
 		Builds powerset recursively.
 
-		>>> powerHelp([1,2])
+		>>> powerHelp([0,1])
 		[[], [1], [0], [1, 0]]
 		'''
 		if not A:
@@ -637,7 +626,8 @@ def haarVec(vals, p=90):
 	inverse transforms the remaining values.
 
 	>>> haarVec([1,2,5,1,2,3,4,0,7,3,2,1])
-	[ 2.25  2.25  2.25  2.25  2.25  2.25  2.25  2.25  5.    5.    1.5   1.5 ]
+	array([ 2.25,  2.25,  2.25,  2.25,  2.25,  2.25,  2.25,  2.25,  5.  ,
+	        5.  ,  1.5 ,  1.5 ])
 	'''
 	import pywt
 	hC = pywt.wavedec(vals,'haar')
