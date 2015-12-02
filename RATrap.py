@@ -6,15 +6,9 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
+import matplotlib.cm as cm
 from itertools import izip_longest
-
-# Didn't know how to handle EML and EL, so I'm treating distance as hamming to
-# the inclusion
-times = ('ES','ESMS','MS','MSLS','LS','ESLS','ESMSLS')
-myColors = ("#2250F1","#28C5CC","#1A8A12","#FFFD33","#FB0018","#EA3CF2","#FAB427")
-colorDict = dict(zip(times,myColors))
-boolTimes = {'E':np.array((1,0,0),dtype=np.bool),'M':np.array((0,1,0),dtype=np.bool),'L':np.array((0,0,1),dtype=np.bool)}
-timeRE = re.compile(r'Name=(([EML]S){1,3})')
+from operator import itemgetter
 
 def main():
 	parser = argparse.ArgumentParser(description="Finds the timing differences between two segmentation profiles.")
@@ -22,6 +16,7 @@ def main():
 	parser.add_argument("-S",metavar="INT", help="Tile Size (Default: %(default)s)", default=1000, type=int)
 	parser.add_argument("-A",metavar="GFF3", help="First Segmentation Profile (mitotic)", required=True)
 	parser.add_argument("-B",metavar="GFF3", help="Second Segmentation Profile (endo)", required=True)
+	parser.add_argument("-T",metavar="STR", help="Times (Default: %(default)s)", default="ES,MS,LS", type=str)
 	parser.add_argument("-F",metavar="FASTA", help="Reference", required=True)
 	parser.add_argument("-O",metavar="BEDG", help="Output to bedgraph file", default=sys.stdout)
 	parser.add_argument("--stats", action="store_true", help="Generate stats and figures")
@@ -29,13 +24,15 @@ def main():
 	args = parser.parse_args()
 	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
 		fai = args.F+'.fai'
+		if not os.path.exists(fai): sys.exit("Please generate an faidx for %s\n"%(args.F))
 	else:
 		sys.exit("Please specify a fasta file\n")
 	if args.stats and not args.O:
 		sys.exit("Please specify an output bedgraph so stats are not hidden")
 	chromDict = readFAI(fai)
-	genomeA = processGenome(chromDict, args.S, args.A, args.stats, 'Mitotic', args.fig)
-	genomeB = processGenome(chromDict, args.S, args.B, args.stats, 'Endocycle', args.fig)
+	plotVars(args.T)
+	genomeA = processGenome(chromDict, args.S, args.A, args.stats, args.fig)
+	genomeB = processGenome(chromDict, args.S, args.B, args.stats, args.fig)
 	OF = open(args.O,'w')
 	sortedChroms = sorted(chromDict.keys())
 	X = [[] for i in xrange(len(sortedChroms))]
@@ -56,7 +53,6 @@ def main():
 		for record in compareGenomes(genomeA, genomeB, chromDict, args.d, args.S, args.stats, args.fig):
 			OF.write(record+'\n')
 	OF.close()
-	
 
 def compareGenomes(A, B, chromDict, minD, tileSize, statsFlag, figExt):
 	sortedChroms = sorted(chromDict.keys()[:])
@@ -109,75 +105,122 @@ def grouper(iterable, n, fillvalue=None):
 	args = [iter(iterable)] * n
 	return izip_longest(*args, fillvalue=fillvalue)
 
-def processGenome(chromDict, tileSize, gff, statsFlag, titleName, figExt):
+def processGenome(chromDict, tileSize, gff, statsFlag, figExt):
 	genome = makeGenomeStruct(chromDict, tileSize)
-	updateGenomeStruct(genome, gff, tileSize, chromDict, statsFlag, titleName, figExt)
+	updateGenomeStruct(genome, gff, tileSize, chromDict, statsFlag, figExt)
 	return genome
 
-def updateGenomeStruct(genome, gff, tileSize, chromDict, statsFlag, titleName, figExt):
+def updateGenomeStruct(genome, gff, tileSize, chromDict, statsFlag, figExt):
+	def process(location, name, tileSize):
+		chrom, start, end = location
+		binArray = toBA(name)
+		sI = np.ceil(start/tileSize)
+		eI = np.ceil(end/float(tileSize))
+		return (chrom, binArray, sI, eI)
 	if statsFlag:
 		segments = {chrom:[] for chrom in chromDict.keys()}
-		for location, color in fileReader(gff):
-			chrom = location[0]
-			binArray = toBA(color)
-			sI = np.ceil(location[1]/tileSize)
-			eI = np.ceil(location[2]/float(tileSize))
+		for location, name in fileReader(gff):
+			chrom, binArray, sI, eI = process(location, name, tileSize)
 			genome[chrom][sI:eI] = binArray
-			segments[chrom].append((color, eI-sI))
-		plotSize(segments, titleName, tileSize, figExt)
-		plotComp(segments, titleName, tileSize, chromDict, figExt)
+			arrayStr =  ''.join(map(lambda x: str(int(x)), binArray))
+			segments[chrom].append((arrayStr, eI-sI))
+		title = os.path.splitext(os.path.split(gff)[1])[0]
+		plotSize(segments, title, tileSize, figExt)
+		plotComp(segments, title, tileSize, chromDict, figExt)
 	else:
-		for location, color in fileReader(gff):
-			chrom = location[0]
-			binArray = toBA(color)
-			sI = np.ceil(location[1]/tileSize)
-			eI = np.ceil(location[2]/float(tileSize))
+		for location, name in fileReader(gff):
+			chrom, binArray, sI, eI = process(location, name, tileSize)
 			genome[chrom][sI:eI] = binArray
 
-def plotComp(segments, titleName, tileSize, chromDict, figExt):
+def toBA(name):
+	'''
+	>>> toBA('ESMS')
+	array([ True,  True, False], dtype=bool)
+	>>> toBA('MSLS')
+	array([False,  True,  True], dtype=bool)
+	'''
+	return np.array([N in name for N in nameList], dtype=np.bool)
+
+def plotVars(names):
+	global nameList
+	nameList = names.split(',')
+	global colors
+	if names == 'ES,MS,LS':
+		#global times
+		#times = ('ES','ESMS','MS','MSLS','LS','ESLS','ESMSLS')
+		#myColors = ("#2250F1","#28C5CC","#1A8A12","#FFFD33","#FB0018","#EA3CF2","#FAB427")
+		colors = ["#FB0018","#1A8A12","#FFFD33","#2250F1","#EA3CF2","#28C5CC","#FAB427"]
+	else:
+		colors = cm.rainbow(np.linspace(0,1,2**len(nameList)-1))
+
+def plotComp(segments, title, tileSize, chromDict, figExt):
 	plt.figure()
 	yIndex = 0.1
 	yHeight = 0.8
 	sortedChroms = sorted(chromDict.keys())
+	labels, inds, cinds = makeLabels()
 	for chrom in sortedChroms:
-		xranges = []
+		#xranges = []
 		chromSize = chromDict[chrom]
-		X = np.zeros(len(times))
-		for color, size in segments[chrom]:
-			X[times.index(color)] += size*tileSize
+		X = np.zeros(2**len(nameList)-1)
+		for arrayStr, size in segments[chrom]:
+			sortedInd = inds[int(arrayStr,2)-1]
+			X[sortedInd] += size*tileSize
 		percents = list(np.round(X/float(chromSize),3))
-		xranges += zip(np.cumsum([0]+percents[:-1]), percents)
-		plt.broken_barh(xranges, (yIndex, yHeight), lw=0, color=myColors)
+		xranges = zip(np.cumsum([0]+percents[:-1]), percents)
+		plt.broken_barh(xranges, (yIndex, yHeight), lw=0, color=[colors[i] for i in cinds])
 		yIndex += 1
 	plt.xlim((0,1))
 	plt.yticks(np.arange(0.5, len(sortedChroms)), sortedChroms)
 	plt.ylabel("Chromosome")
 	plt.xlabel("Fraction of Chromosome")
-	plt.title(titleName+" Chromosome Composition")
-	patches = [mpatches.Patch(color=myColors[i], label=times[i]) for i in xrange(len(times))]
-	plt.figlegend(patches, times, loc='center right', ncol=1, frameon=False)
+	plt.title(title+" Chromosome Composition")
+	patches = [mpatches.Patch(color=colors[cinds[i]], label=labels[i]) for i in xrange(len(labels))]
+	plt.figlegend(patches, labels, loc='center right', ncol=1, frameon=False)
 	plt.tight_layout(rect=[0,0,0.81,1.0])
-	plt.savefig("composition_%s.%s"%(titleName, figExt))
+	plt.savefig("composition_%s.%s"%(title, figExt))
 	plt.close()
 
-def plotSize(segments, titleName, tileSize, figExt):
-	X = [[] for i in xrange(len(times))]
+def makeLabels():
+	'''
+	>>> makeLabels()
+	['ES', 'ESMS', 'ESLS', 'ESMSLS', 'MS', 'MSLS', 'LS']
+	'''
+	labels = []
+	numNames = 2**len(nameList)-1
+	for i in range(numNames):
+		binRep = map(int, np.binary_repr(i+1,len(nameList)))
+		name = ''
+		for binI in range(len(binRep)):
+			if binRep[binI]: name += nameList[binI]
+		boolA = np.array(binRep, dtype=np.bool)
+		val = np.mean(np.where(boolA))
+		labels.append((name,val))
+	sortedLabels = sorted(labels, key=itemgetter(1,0))
+	inds = [sortedLabels.index(x) for x in labels]
+	cinds = [labels.index(x) for x in sortedLabels]
+	return (map(lambda x: x[0], sortedLabels), inds, cinds)
+
+def plotSize(segments, title, tileSize, figExt):
+	X = [[] for i in xrange(2**len(nameList)-1)]
+	labels, inds, cinds = makeLabels()
 	for chromList in segments.itervalues():
-		for color, size in chromList:
-			X[times.index(color)].append(size*tileSize)
-	print "%s Size Distribution"%(titleName)
+		for arrayStr, size in chromList:
+			base10 = int(arrayStr,2)
+			sortedInd = inds[base10-1]
+			X[sortedInd].append(size*tileSize)
+	print "%s Size Distribution"%(title)
 	print "%-6s %10s %10s %10s %10s %10s %10s"%("","min","1st-Q","median","3rd-Q","max",'count')
-	for segment in times:
-		xIndex = times.index(segment)
+	for segment, xIndex in zip(labels, range(len(labels))):
 		fiveSum = fivenum(X[xIndex]) # (min, 1st-Q, median, 3rd-Q, max)
 		args = (segment,)+fiveSum+(len(X[xIndex]),)
 		print "%-6s %10.1f %10.1f %10.1f %10.1f %10.1f %10i"%args
 	plt.figure()
-	plt.boxplot(X, labels=times, showfliers=False)
+	plt.boxplot(X, labels=labels, showfliers=False)
 	plt.ylabel("Segment Size (bp)")
 	plt.xlabel("Time")
-	plt.title(titleName+" Size Distribution")
-	plt.savefig("size_dist_%s.%s"%(titleName, figExt))
+	plt.title(title+" Size Distribution")
+	plt.savefig("size_dist_%s.%s"%(title, figExt))
 	plt.close()
 		
 def fileReader(a):
@@ -185,13 +228,20 @@ def fileReader(a):
 		sys.exit("%s is not a gff3 file"%(a))
 	for line in open(a,'r'):
 		if line[0] != '#':
-			yield(lineParser(line)) #((chrom, start, end), color)
+			yield(lineParser(line)) #((chrom, start, end), name)
+
+# pre-compiled RE for finding the name in the GFF
+nameRE = re.compile(r'Name=([^;]+);')
 
 def lineParser(line):
 	tmp = line.split('\t')
-	location = (tmp[0], int(tmp[3])-1, int(tmp[4])) # (chrom, start, end)
-	color = timeRE.search(tmp[8]).group(1) # color
-	return location, color
+	try:
+		location = (tmp[0], int(tmp[3])-1, int(tmp[4])) # (chrom, start, end)
+	except:
+		print "Couldn't parse:", tmp
+		sys.exit()
+	name = nameRE.search(tmp[8]).group(1) # name
+	return location, name
 
 def makeGenomeStruct(chromDict, tileSize):
 	genome = {}
@@ -231,26 +281,17 @@ def dist(a,b):
 
 	
 	>>> dist(toBA('ESMS'),toBA('MSLS'))
-	1
+	1.0
 	>>> dist(toBA('LS'),toBA('MS'))
-	-1
+	-1.0
 	>>> dist(toBA('ESLS'),toBA('MS'))
-	0
+	0.0
 	'''
 	if np.sum(a) == 0 or np.sum(b) == 0:
-		return 0
+		return 0.0
 	indexMeanA = np.mean(np.where(a))
 	indexMeanB = np.mean(np.where(b))
 	return indexMeanB-indexMeanA
-
-def toBA(a):
-	'''
-	>>> toBA('ESMS')
-	array([ True,  True, False], dtype=bool)
-	>>> toBA('MSLS')
-	array([False,  True,  True], dtype=bool)
-	'''
-	return np.logical_or.reduce(map(lambda x: boolTimes[x], a.split('S')[:-1]))
 
 def fivenum(v):
 	'''
@@ -276,3 +317,5 @@ def fivenum(v):
 
 if __name__ == "__main__":
 	main()
+else:
+	nameList = ['ES','MS','LS']
