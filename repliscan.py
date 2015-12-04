@@ -670,6 +670,7 @@ def mergeRegions(counter, distThresh=0):
 		start1, end1 = bounds[i+1]
 		if start1-end0-1 < distThresh:
 			counter[start0:end1] = 1
+
 def calcRegionBounds(counter):
 	'''
 	Returns the new lower and upper bounds over overlapped regions.

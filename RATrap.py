@@ -159,17 +159,23 @@ def plotComp(segments, title, tileSize, chromDict, figExt):
 	yHeight = 0.8
 	sortedChroms = sorted(chromDict.keys())
 	labels, inds, cinds = makeLabels()
+	OT = open("composition_%s.tab"%(title), 'w')
+	OT.write("Chr\t"+'\t \t'.join(labels)+'\t \tChr Length\n')
 	for chrom in sortedChroms:
-		#xranges = []
+		otStr = '%s\t'%(chrom)
 		chromSize = chromDict[chrom]
 		X = np.zeros(2**len(nameList)-1)
 		for arrayStr, size in segments[chrom]:
 			sortedInd = inds[int(arrayStr,2)-1]
 			X[sortedInd] += size*tileSize
 		percents = list(np.round(X/float(chromSize),3))
+		sP = map(lambda x: str(x*100)+'%', percents)
+		otStr += '\t'.join([str(val) for tup in zip(X,sP) for val in tup])+'\t'+str(chromSize)+'\n'
+		OT.write(otStr)
 		xranges = zip(np.cumsum([0]+percents[:-1]), percents)
 		plt.broken_barh(xranges, (yIndex, yHeight), lw=0, color=[colors[i] for i in cinds])
 		yIndex += 1
+	OT.close()
 	plt.xlim((0,1))
 	plt.yticks(np.arange(0.5, len(sortedChroms)), sortedChroms)
 	plt.ylabel("Chromosome")
