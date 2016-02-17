@@ -70,6 +70,9 @@ Methods to handle replicates:
 	parser.add_argument("--rep", metavar='STR', help=\
 		"Replication Method (threshold|auto|percent) (Default: %(default)s)", default="auto",\
 		type=argChecker(('threshold','auto','percent'),'replication method').check)
+	parser.add_argument("--scope", metavar='STR', help=\
+		"Replication scope (chromosome|genome Default: %(default)s)", default="chromosome",\
+		type=argChecker(('chromosome','genome'),'replication scope').check)
 	parser.add_argument("-T", metavar='Float', help=\
 		"Threshold Level (Default: %(default)s)", default=0.0, type=float)
 	parser.add_argument("-P", metavar='Float', help=\
@@ -104,7 +107,7 @@ Methods to handle replicates:
 	#####################################################
 	# Perform Segmentation
 	#####################################################
-	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.use, args.T, args.P, args.seg)
+	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.scope, args.use, args.T, args.P, args.seg)
 	print "Done"
 
 def memAvail(p=0.8):
@@ -333,7 +336,7 @@ def parseIN(inFile):
 	fList = []
 	for line in open(inFile,'r'):
 		tmp = line.rstrip('\n').split('\t')
-		fList.append((tuple(tmp[1:]), tmp[0]))
+		fList.append((tuple(filter(lambda x: x != '', tmp[1:])), tmp[0]))
 	return fList
 
 def sortWorker(inFile, chrom, nCols, conn, OF):
@@ -408,6 +411,8 @@ def makeBedgraph(fList, fasta, size, replicates):
 			bamBed = os.path.splitext(bam)[0]+'.bed'
 			if not os.path.exists(bamBed):
 				bamList.append(bam)
+	print "Converting to bed:"
+	for bam in bamList: print " - %s"%(bam)
 	if len(bamList) > 0:
 		p = Pool(min((cpu_count(),len(bamList))))
 		ret = p.map(bamtobed, bamList)
@@ -415,7 +420,7 @@ def makeBedgraph(fList, fasta, size, replicates):
 		p.join()
 		for bam in bamList:
 			bamBed = os.path.splitext(bam)[0]+'.bed'
-			print "Generating %s"%(bamBed)
+			print "Sorting %s"%(bamBed)
 			sortBED(bamBed, sortedChroms, 'tmp.bed')
 			os.system("mv tmp.bed %s"%(bamBed))
 	## generate bedgraphs
@@ -453,11 +458,6 @@ def parseLocations(chroms):
 	locDict[ctmp] = (start,i+1)
 	return locDict
 
-def fMissingCoverage(t, allSignal):
-	max = allSignal.shape[1]
-	ret= np.mean(np.sum(np.any(allSignal > t, axis=0)))/float(max)
-	return ret
-
 def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.figure(1)
 	plt.subplot(211)
@@ -475,7 +475,91 @@ def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.savefig("%s_fig.png"%(chrom))
 	plt.clf()
 
-def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut, segMeth):
+def calcThreshold(vals, locDict, threshMethod, scope, T, P, plotCov):
+	'''
+	>>> calcThreshold([0,2,1], {1:(2,3), 2:(4,5)}, 'threshold', 'genome', 1.0, 2.5, True)
+	{1: 1.0, 2: 1.0}
+	'''
+	if threshMethod == 'threshold':
+		return dict.fromkeys(locDict, T)
+	if scope == 'genome':
+		if threshMethod == 'auto':
+			thresh = autoThresh(vals, 'genome', plotCov)
+		elif threshMethod == 'percent':
+			thresh = perThresh(vals)
+		else:
+			sys.exit("\nBad thresh method for genome coverage: %s\n"%(threshMethod))
+		return dict.fromkeys(locDict, thresh)
+	elif scope == 'chromosome':
+		threshDict = {}
+		for chrom, (s,e) in locDict.iteritems():
+			chrVals = vals[:,s:e]
+			if threshMethod == 'auto':
+				threshDict[chrom] = autoThresh(chrVals, chrom, plotCov)
+			elif threshMethod == 'percent':
+				threshDict[chrom] = perThresh(chrVals)
+			else:
+				sys.exit("\nBad thresh method for chromosome coverage: %s\n"%(threshMethod))
+		return threshDict
+	else:
+		sys.exit("\nBad scope: %s\n"%(scope))
+
+def autoThresh(vals, name, plotCov):
+	def fMissingCoverage(thresh, allSignal):
+		'''
+		float thresh
+		float allSignal[time, location]
+
+		>>> fMissingCoverage(9, np.arange(12).reshape((3,4)))
+		0.5
+		'''
+		numBins = allSignal.shape[1]
+		allGTthresh = np.any(allSignal > thresh, axis=0)
+		totalGTthresh = np.sum(allGTthresh)
+		return totalGTthresh/np.float(numBins)
+	minVals = np.min(vals)
+	maxVals = np.max(vals)
+	if minVals == 0 and maxVals == 0: return 1.0
+	X = np.arange(minVals-0.5, maxVals+0.5, 0.1)
+	vFunc = np.vectorize(fMissingCoverage, excluded=['allSignal'])
+	Y = vFunc(X,allSignal=vals)
+	# Perform cubic interpolation to remove noisy local maxima
+	intF = scipy.interpolate.interp1d(X,Y,kind="cubic")
+	dX = np.arange(minVals,maxVals,0.005) 
+	# Calculate the derivative of the coverage at different thresholds
+	d1 = scipy.misc.derivative(intF,dX, dx=0.005,n=1)
+	d2 = scipy.misc.derivative(intF,dX, dx=0.005,n=2)
+	#print "X\tY\tD1\tD2"
+	#for i in xrange(len(d1)):
+		#print "%.2f\t%.2f\t%.2f\t%.2f"%(dX[i], intF(dX[i]), d1[i], d2[i])
+	# Derivative will only be negative
+	# Given f(x), find:
+	#	minD = argmin(f'(x))
+	#	argmax(f''(x) == -1) and x < minD
+	dMin = np.argmin(d1)
+	critLocs = filter(lambda x: d1[x] > -0.1 and (d2[x] == 0.0 or np.sum(np.sign(d2[x:x+2])) == 0.0), range(dMin))
+	if critLocs:
+		firstLevel = np.max(critLocs)
+	else:
+		firstLevel = 0
+	inflectLocs = filter(lambda x: d2[x-1] > -1.0 and d2[x+1] < -1.0, np.arange(firstLevel+1, dMin-1))
+	#inflectLocs = np.where(np.isclose(d2[firstLevel:dMin],-1.0,0.1))[0]+firstLevel
+	if len(inflectLocs) > 0:
+		thresh = dX[np.min(inflectLocs)]
+	else:
+		thresh = 1.0
+	if plotCov:
+		plotCoverage(dX, d1, thresh, intF, name)
+	return thresh
+
+def perThresh(vals, pCut):
+	'''
+	>>> perThresh(range(10), 40) == 3.6
+	True
+	'''
+	return np.percentile(vals, pCut)
+
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thresh, pCut, segMeth):
 	sortedChroms = sorted(chromDict.keys()[:])
 	fSuff = {'log':'logFC', 'ratio':'ratio'}
 	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
@@ -487,6 +571,8 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 	print "Parsing :",beds
 	L, vals = processFiles(beds)
 	locDict = parseLocations(L[0])
+	print "Calculating thresholds..."
+	thresholdDict = calcThreshold(vals, locDict, threshMethod, scope, thresh, pCut, plotCov)
 	for chrom in sortedChroms:
 		s,e = locDict[chrom]
 		tmpChr = L[0][s:e]
@@ -494,32 +580,8 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, use, thresh, pCut
 		tmpE = L[2][s:e]
 		maskM = np.zeros((len(names),len(tmpChr)),dtype=np.bool)
 		allSignal = vals[:len(beds),s:e]
-		if threshMethod == "threshold":
-			pass
-		elif threshMethod == "auto":
-			asMin = np.min(allSignal)
-			asMax = np.max(allSignal)
-			X = np.arange(asMin-0.5, asMax+0.5, 0.1)
-			vFunc = np.vectorize(fMissingCoverage, excluded=['allSignal'])
-			Y = vFunc(X,allSignal=allSignal)
-			intF = scipy.interpolate.interp1d(X,Y,kind="cubic")
-			dX = np.arange(asMin,asMax,0.01)
-			d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
-			try:
-				locMax = np.argmax(np.abs(d1))
-				lowerLocs = np.where(np.abs(d1) < 0.1)[0]
-				belowLocal = lowerLocs[lowerLocs < locMax]
-				thresh = dX[np.max(belowLocal)]
-			except:
-				thresh = 0.0
-			print "%s replication threshold: %.2f"%(chrom, thresh)
-			if plotCov:
-				plotCoverage(dX, d1, thresh, intF, chrom)
-		elif threshMethod == "percent":
-			thresh = np.percentile(allSignal, pCut)
-			#bThresh = np.percentile(allSignal, pCut, axis=1) 
-		else:
-			sys.exit("invalid threshold method")
+		thresh = thresholdDict[chrom]
+		print "Using a threshold of %.2f for chromosome %s"%(thresh, chrom)
 		for i in xrange(len(beds)):
 			outGFF = '%s_%s_%i.smooth.gff3'%(names[i], fSuff[use], level)
 			outSignal = vals[i,s:e]
