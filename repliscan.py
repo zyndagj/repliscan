@@ -529,11 +529,11 @@ def autoThresh(vals, name, plotCov):
 	# Calculate the derivative of the coverage at different thresholds
 	d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
 	dMin = np.argmin(d1)
-	cutShoulder = np.where(d1 > 0.1)[0]
-	if len(cutShoulder):
+	cutShoulder = np.where(d1 > -0.1)[0]
+	try:
 		belowMin = cutShoulder[cutShoulder < dMin]
 		thresh = dX[np.max(belowMin)]
-	else:
+	except:
 		thresh = 1.0
 	if plotCov:
 		plotCoverage(dX, d1, thresh, intF, name)
