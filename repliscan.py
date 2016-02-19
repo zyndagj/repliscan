@@ -525,27 +525,14 @@ def autoThresh(vals, name, plotCov):
 	Y = vFunc(X,allSignal=vals)
 	# Perform cubic interpolation to remove noisy local maxima
 	intF = scipy.interpolate.interp1d(X,Y,kind="cubic")
-	dX = np.arange(minVals,maxVals,0.005) 
+	dX = np.arange(minVals,maxVals,0.01)
 	# Calculate the derivative of the coverage at different thresholds
-	d1 = scipy.misc.derivative(intF,dX, dx=0.005,n=1)
-	d2 = scipy.misc.derivative(intF,dX, dx=0.005,n=2)
-	#print "X\tY\tD1\tD2"
-	#for i in xrange(len(d1)):
-		#print "%.2f\t%.2f\t%.2f\t%.2f"%(dX[i], intF(dX[i]), d1[i], d2[i])
-	# Derivative will only be negative
-	# Given f(x), find:
-	#	minD = argmin(f'(x))
-	#	argmax(f''(x) == -1) and x < minD
+	d1 = scipy.misc.derivative(intF,dX, dx=0.05,n=1)
 	dMin = np.argmin(d1)
-	critLocs = filter(lambda x: d1[x] > -0.1 and (d2[x] == 0.0 or np.sum(np.sign(d2[x:x+2])) == 0.0), range(dMin))
-	if critLocs:
-		firstLevel = np.max(critLocs)
-	else:
-		firstLevel = 0
-	inflectLocs = filter(lambda x: d2[x-1] > -1.0 and d2[x+1] < -1.0, np.arange(firstLevel+1, dMin-1))
-	#inflectLocs = np.where(np.isclose(d2[firstLevel:dMin],-1.0,0.1))[0]+firstLevel
-	if len(inflectLocs) > 0:
-		thresh = dX[np.min(inflectLocs)]
+	cutShoulder = np.where(d1 > 0.1)[0]
+	if len(cutShoulder):
+		belowMin = cutShoulder[cutShoulder < dMin]
+		thresh = dX[np.max(belowMin)]
 	else:
 		thresh = 1.0
 	if plotCov:
