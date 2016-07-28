@@ -22,10 +22,12 @@ def main():
 	ax = plt.subplot(211)
 	ax.xaxis.set_visible(False)
 	firstLastFreqs = countFreqs(firstLast)
+	writeFreqs(firstLastFreqs, 'EL_links.tab')
 	plotFreqs(firstLastFreqs, 'Frequency of EL Links')
 	ax = plt.subplot(212)
 	ax.xaxis.set_visible(False)
 	allFreqs = countFreqs(allTimes)
+	writeFreqs(allFreqs, 'EML_links.tab')
 	plotFreqs(allFreqs, 'Frequency of EML Links')
 	plt.tight_layout()
 	plt.savefig('relationships.png')
@@ -45,6 +47,12 @@ def countFreqs(inList):
 	c = Counter()
 	c.update(inList)
 	return c
+
+def writeFreqs(counter, outFile):
+	OF = open(outFile,'w')
+	for k,i in counter.iteritems():
+		OF.write('%s\t%i\n'%('\t'.join(k),i))
+	OF.close()
 
 def processGenome(gff):
 	flName = nameList[0]+nameList[-1]
