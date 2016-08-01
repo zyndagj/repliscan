@@ -7,6 +7,7 @@ import subprocess as sp
 from glob import glob
 from copy import deepcopy
 from array import array
+from itertools import compress
 import scipy.optimize
 import scipy.interpolate
 import scipy.misc
@@ -15,8 +16,14 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
-colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
+def plotVars(nameList):
+	global myColors
+	if nameList == ['ES','MS','LS']:
+		myColors = ["#FB0018","#1A8A12","#FFFD33","#2250F1","#EA3CF2","#28C5CC","#FAB427"]
+	else:
+		myColors = cm.rainbow(np.linspace(0,1,2**len(nameList)-1))
+#myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
+#colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
 class argChecker():
 	def __init__(self, options, afterValid):
@@ -546,6 +553,27 @@ def perThresh(vals, pCut):
 	'''
 	return np.percentile(vals, pCut)
 
+def int2name(val, nameList):
+	'''
+	>>> NL = ['S1', 'S2']
+	>>> [ int2name(i, NL) for i in range(1,4) ]
+	['S2', 'S1', 'S1S2']
+	>>> int2name(4, NL)
+	Traceback (most recent call last):
+	 ...
+	ValueError: Val exceeds the namelist
+	>>> int2name(0, NL)
+	Traceback (most recent call last):
+	 ...
+	ValueError: No name
+	'''
+	if not val:
+		raise ValueError("No name")
+	if val > (2**len(nameList))-1:
+		raise ValueError("Val exceeds the namelist")
+	binRep = map(int, np.binary_repr(val,len(nameList)))
+	return ''.join(compress(nameList, binRep))
+
 def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thresh, pCut, segMeth):
 	sortedChroms = sorted(chromDict.keys()[:])
 	fSuff = {'log':'logFC', 'ratio':'ratio'}
@@ -553,13 +581,17 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 	names = map(lambda y: y[1], fList[1:])
 	for name in names:
 		outGFF = '%s_%s_%i.smooth.gff3'%(name, fSuff[use], level)
-		open(outGFF,'w').write('##gff-version 3\n#track name="%s LogFold %ibp" gffTags=on\n' % (name,S))
-		open(fSuff[use]+"_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
+		open(outGFF,'w').write('##gff-version 3\n#track name="%s %ibp" gffTags=on\n' % (name,S))
+	#open(fSuff[use]+"_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
 	print "Parsing :",beds
 	L, vals = processFiles(beds)
 	locDict = parseLocations(L[0])
 	print "Calculating thresholds..."
 	thresholdDict = calcThreshold(vals, locDict, threshMethod, scope, thresh, pCut, plotCov)
+	OS = open(fSuff[use]+'_segmentation.gff3','w')
+	OS.write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
+	segCount = 1
+	counts = np.ones(len(beds))
 	for chrom in sortedChroms:
 		s,e = locDict[chrom]
 		tmpChr = L[0][s:e]
@@ -570,6 +602,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 		thresh = thresholdDict[chrom]
 		print "Using a threshold of %.2f for chromosome %s"%(thresh, chrom)
 		for i in xrange(len(beds)):
+			colorIndex = int(''.join([ '1' if i == j else '0' for j in range(3)]),2)
 			outGFF = '%s_%s_%i.smooth.gff3'%(names[i], fSuff[use], level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
@@ -577,10 +610,9 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 			maskM[i,:]=bMask[:]
 			rBounds = calcRegionBounds(bMask)
 			OF = open(outGFF,'a')
-			count = 1
 			for rS,rE in rBounds:
-				OF.write("%s\t.\tgene\t%i\t%i\t.\t.\t.\tID=gene%i;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, myColors[i]))
-				count += 1
+				OF.write("%s\t.\tgene\t%i\t%i\t.\t.\t.\tID=gene%i;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], counts[i], myColors[colorIndex-1]))
+				counts += 1
 			OF.close()
 		## Segmentation
 		if segMeth == "proportion":
@@ -595,27 +627,32 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 			pass
 		else:
 			sys.exit("invalid segmentation method: "+segMeth)
-		OS = open(fSuff[use]+'_segmentation.gff3','a')
-		count = 1
-		setSigI = set(range(len(names)))
-		for s in powerSet(range(len(names))):
-			setS = set(s)
-			tA = np.ones(maskM.shape[1], dtype=np.bool)
-			for i in s: #intersection
-				tA = np.logical_and(maskM[i,:], tA)
-			for i in list(setSigI-setS): #remove differences
-				tA[maskM[i,:]] = 0
-			rBounds = calcRegionBounds(tA)
-			name = ''.join(map(lambda y: names[y],sorted(s)))
-			for rS,rE in rBounds:
-				OS.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%i;Name=%s;color=%s;\n" % (tmpChr[rS], tmpS[rS]+1, tmpE[rE], count, name, colorDict[frozenset(s)]))
-				count += 1
-		OS.close()
+		# Convert each binary category into a base-10 integer
+		calls = np.array(map(lambda x: sum(2**np.where(x[::-1])[0]), maskM.T))
+		# Calculate regions of repeting categories (including zeros)
+		regions, labels = calcRegionCategories(calls)
+		for (s, e), l in zip(regions, labels):
+			if tmpChr[s] != chrom:
+				sys.exit("Chromosomes didn't match")
+			if l:
+				name = int2name(l, names)
+				OS.write("%s\t.\tgene\t%i\t%s\t.\t.\t.\tID=gene%i;Name=%s;color=%s;\n" % (chrom, tmpS[s]+1, tmpE[e], segCount, name, myColors[l-1]))
+				segCount += 1
+	OS.close()
 
 def classProportion(dataRow, emlSize = 0.5):
 	'''
 	Calculates the segmentation class based on the
 	proportion of replication.
+	
+	Input
+	=======================
+	dataRow		numpy array of proportional values
+	emlSize		size of EML region for unequal cuts
+	
+	Output
+	=======================
+	out		binary numpy array of most significant values
 
 	>>> classProportion(np.array([1.0,0.49,0.51]))
 	array([ True, False,  True], dtype=bool)
@@ -719,6 +756,44 @@ def mergeRegions(counter, distThresh=0):
 		start1, end1 = bounds[i+1]
 		if start1-end0-1 < distThresh:
 			counter[start0:end1] = 1
+
+def calcRegionCategories(counter):
+	'''
+	Returns the new lower and upper bounds over overlapped regions, along
+	with the category.
+
+	Parameters
+	=============================
+	counter		Binary counter array
+	
+	Output
+	=============================
+	regions		NP array
+	labels		NP array
+
+	>>> calcRegionCategories(np.array([1,1,0,0,1,1,1,0,0]))
+	(array([[0, 1],
+	       [2, 3],
+	       [4, 6],
+	       [7, 8]]), array([1, 0, 1, 0]))
+	'''
+	regions = []
+	labels = []
+	sI = 0
+	val = counter[0]
+	eI = 0
+	for index in range(1,len(counter)):
+		if counter[index] == val:
+			eI = index
+		else:
+			regions.append((sI,eI))
+			labels.append(val)
+			val = counter[index]
+			sI = index
+			eI = index
+	regions.append((sI,eI))
+	labels.append(val)
+	return np.array(regions), np.array(labels)
 
 def calcRegionBounds(counter):
 	'''
