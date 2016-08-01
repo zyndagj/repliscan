@@ -15,13 +15,16 @@ import scipy.stats as ss
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+import matplotlib.cm as cm
 
 def plotVars(nameList):
 	global myColors
-	if nameList == ['ES','MS','LS']:
+	if nameList == ['ES','MS','LS'] or nameList == ['E','M','L']:
+		print "Using ES, MS, LS colors"
 		myColors = ["#FB0018","#1A8A12","#FFFD33","#2250F1","#EA3CF2","#28C5CC","#FAB427"]
 	else:
-		myColors = cm.rainbow(np.linspace(0,1,2**len(nameList)-1))
+		print "Using rainbow colors"
+		myColors = map(lambda x: matplotlib.colors.rgb2hex(x[:3]), cm.rainbow(np.linspace(0,1,2**len(nameList)-1)))
 #myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
 #colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
@@ -579,6 +582,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 	fSuff = {'log':'logFC', 'ratio':'ratio'}
 	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
+	plotVars(names)
 	for name in names:
 		outGFF = '%s_%s_%i.smooth.gff3'%(name, fSuff[use], level)
 		open(outGFF,'w').write('##gff-version 3\n#track name="%s %ibp" gffTags=on\n' % (name,S))
