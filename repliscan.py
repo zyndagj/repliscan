@@ -24,7 +24,7 @@ def plotVars(nameList):
 		myColors = ["#FB0018","#1A8A12","#FFFD33","#2250F1","#EA3CF2","#28C5CC","#FAB427"]
 	else:
 		print "Using rainbow colors"
-		myColors = map(lambda x: matplotlib.colors.rgb2hex(x[:3]), cm.rainbow(np.linspace(0,1,2**len(nameList)-1)))
+		myColors = map(lambda x: matplotlib.colors.rgb2hex(x[:3]), cm.hsv(np.linspace(0,1,2**len(nameList)-1)))
 #myColors = ("#2250F1","#1A8A12","#FB0018","#FFFD33","#EA3CF2","#28C5CC","#FAB427")
 #colorDict = {frozenset([0]):myColors[0], frozenset([1]):myColors[1], frozenset([2]):myColors[2], frozenset([2,1]):myColors[3], frozenset([2,0]):myColors[4], frozenset([1,0]):myColors[5], frozenset([2,1,0]):myColors[6]}
 
@@ -225,7 +225,7 @@ def covNorm(vals):
 	array([[ 0.  ,  1.  ,  2.  ],
 	       [ 0.75,  1.  ,  1.25]])
 	'''
-	sums = np.sum(vals,axis=1,dtype=np.long)
+	sums = np.sum(vals,axis=1)
 	nVals = np.float(vals.shape[1])
 	return vals*(float(nVals)/sums.reshape(len(sums),1))
 
