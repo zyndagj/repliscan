@@ -100,12 +100,12 @@ Methods to handle replicates:
 	#####################################################
 	# Convert BAMs to Bedgraph files
 	#####################################################
-	makeBedgraph(fList, args.F, args.S, args.A.lower())
+	makeBedgraph(fList, args.F, args.S, args.A.lower(), args.norm, args.low, args.plot)
 	#####################################################
 	# Calculate replication ratio
 	#####################################################
 	chromDict = readFAI(fai)
-	run_logFC(fList, args.norm, args.use, args.low, args.plot)
+	run_logFC(fList, args.use)
 	#####################################################
 	# Apply Haar Wavelet
 	#####################################################
@@ -191,45 +191,35 @@ def normalizer(method, vals):
 	else:
 		sys.exit("%s is not a valid normalization method."%(normMethod))
 
-def run_logFC(fList, normMethod, use, low, plotCoverage):# thresh=2.5):
+def run_logFC(fList, use):# thresh=2.5):
 	if use == 'log':
 		fSuff = '_logFC.bedgraph'
 	else:
 		fSuff = '_ratio.bedgraph'
-	beds = map(lambda y: y[1]+".bedgraph", fList)
-	if not os.path.exists(fList[1][1]+fSuff) or force:
-		print "Making LogFold Files From:", beds
-		L, naVals = processFiles(beds)
-		gc.collect()
-		#threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
-		# Dont think I need to do this anymore
-		# Remove coverage levels below 2.5% and above 97.5%
-		times = map(lambda y: y[1], fList)
-		if low:
-			removeLowCoverage(naVals, times, plotCoverage)
-		normVals = normalizer(normMethod, naVals)
-		gtZero = normVals[0,:] > 0.0
-		whereZero = normVals[0,:] == 0.0
-		for bIndex in xrange(1,len(beds)):
-			outName = fList[bIndex][1]+fSuff
-			if not os.path.exists(outName) or force:
-				print "Making %s"%(outName)
-				OF = open(outName,'w')
-				if use == 'log':
-					subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
-					lVals = np.log2(subV)
-				else:
-					lVals = np.zeros(normVals.shape[1])
-					lVals[gtZero] = normVals[bIndex,gtZero]/(normVals[0,gtZero])
-					# decided to remove the control=zero areas
-					#lVals[whereZero] = normVals[bIndex,whereZero]
-				for i in xrange(len(L[0])):
-					outStr = '%s\t%i\t%i\t%.4f\n' % (L[0][i], L[1][i], L[2][i], lVals[i])
-					OF.write(outStr)
-				OF.close()
-		if use == "log": del subV
-		del lVals, L, normVals
-	gc.collect()
+	beds = map(lambda y: y[1]+"_norm.bedgraph", fList)
+	print "Making LogFold Files From:", beds
+	L, normVals = processFiles(beds)
+	#threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
+	# Dont think I need to do this anymore
+	# Remove coverage levels below 2.5% and above 97.5%
+	gtZero = normVals[0,:] > 0.0
+	for bIndex in xrange(1,len(beds)):
+		outName = fList[bIndex][1]+fSuff
+		if not os.path.exists(outName) or force:
+			print "Making %s"%(outName)
+			OF = open(outName,'w')
+			if use == 'log':
+				subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
+				lVals = np.log2(subV)
+			else:
+				lVals = np.zeros(normVals.shape[1])
+				lVals[gtZero] = normVals[bIndex,gtZero]/(normVals[0,gtZero])
+				# decided to remove the control=zero areas
+				#lVals[whereZero] = normVals[bIndex,whereZero]
+			for i in xrange(len(L[0])):
+				outStr = '%s\t%i\t%i\t%.4f\n' % (L[0][i], L[1][i], L[2][i], lVals[i])
+				OF.write(outStr)
+			OF.close()
 
 def removeLowCoverage(vals, names, plotCoverage, cut=0.05):
 	'''
@@ -254,15 +244,20 @@ def removeLowCoverage(vals, names, plotCoverage, cut=0.05):
 	lowerP = cut/2.0
 	upperP = 1.0-lowerP
 	print "Removing %.1f%% > coverage > %.1f%%" % (lowerP*100, upperP*100)
+	p = Pool(min((cpu_count(), len(names))))
+	fits = p.map(calcFit, vals)
+	p.close()
+	p.join()
 	for i in range(vals.shape[0]):
 		plt.figure(i)
 		logNZ = np.log(vals[i,vals[i,:] > 0])
+		xMin = min(logNZ)
 		n, b, p = plt.hist(logNZ, label="Data", bins=100, normed=True)
 		yMax = np.max(n)
-		gShape, gLoc, gScale = ss.gamma.fit(logNZ)
-		plt.xlim(0,max(logNZ))
+		gShape, gLoc, gScale = fits[i]
+		plt.xlim(xMin,max(logNZ))
 		plt.ylim(0,yMax)
-		X = np.arange(0, max(logNZ), 0.1)
+		X = np.arange(xMin, max(logNZ)+0.1, 0.1)
 		lowerCut, upperCut = ss.gamma.ppf([lowerP, upperP], gShape, gLoc, gScale)
 		if plotCoverage:
 			plt.plot(X, ss.gamma.pdf(X,gShape, gLoc, gScale), label="Gamma Fit")
@@ -270,23 +265,24 @@ def removeLowCoverage(vals, names, plotCoverage, cut=0.05):
 			plt.fill_between(X, 0, yMax, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
 			plt.title("%s Coverage Cut"%(names[i]))
 			plt.xlabel("log(Reads/Bin)")
-			plt.ylabel("%")
+			plt.ylabel("Fraction of Reads")
 			plt.savefig('%s_coverage_cut.png'%(names[i]))	
 		vals[i,vals[i,:] < np.exp(lowerCut)] = 0
 		vals[i,vals[i,:] > np.exp(upperCut)] = 0
+
+def calcFit(V):
+	'''
+	Fits a gamama distribution to a numpy array and returns the parameters.
+	'''
+	logNZ = np.log(V[V > 0])
+	gShape, gLoc, gScale = ss.gamma.fit(logNZ)
+	return (gShape, gLoc, gScale)
 
 def processFiles(files):
 	'''
 	Returs the locations and values for a collection of bedgraph files.
 	'''
-	p = Pool(cpu_count())
-	vals = []
-	for i in p.imap(parseVals, files):
-		vals.append(i)
-	p.close()
-	p.join()
-	del p
-	gc.collect()
+	vals = runPool(parseVals, files)
 	locations = parseLocs(files[0])
 	return (locations, np.array(vals,dtype=np.float32))
 
@@ -421,20 +417,28 @@ def bedtobedgraph(argList):
 		os.system("bedtools intersect -a %s -b %s -c -sorted > %s"%(faiBed, bed, bedgraph))
 	return bedgraph
 
-def makeBedgraph(fList, fasta, size, replicates):
-	def runPool(func, args):
-		'''
-		Maps a function to arguments by spawning and joining processor pool.
-		'''
-		p = Pool(min((cpu_count(),len(args))))
-		ret = p.map(func, args)
-		p.close()
-		p.join()
-		return ret
+def runPool(func, args):
+	'''
+	Maps a function to arguments by spawning and joining processor pool.
+	'''
+	p = Pool(min((cpu_count(),len(args))))
+	ret = p.map(func, args)
+	p.close()
+	p.join()
+	return ret
+
+def makeBedgraph(fList, fasta, size, replicates, normMethod, low, plotCoverage):
+	def normBGs(files, normMethod):
+		L, vals = processFiles(files)
+		normVals = normalizer(normMethod, vals)
+		normList = map(lambda x: os.path.splitext(x)[0]+'_norm.bedgraph', files)
+		writeVals(L, normVals, normList)
+		return normList
 	fai = fasta+".fai"
 	faiBed = "%s.%i.bed"%(fasta,size)
 	sortedChroms = sorted(readFAI(fai).keys())
 	memG = memAvail()
+	## Make reference windows
 	if not os.path.exists(fai) or force:
 		print "Making fai index"
 		os.system("samtools faidx %s"%(fasta))
@@ -448,15 +452,55 @@ def makeBedgraph(fList, fasta, size, replicates):
 	# Convert bed to bedgraph
 	print "Converting bed to bedgraph"
 	bgList = runPool(bedtobedgraph, [(faiBed, bed) for bed in bedList])
-	#L, vals = processFiles(bgList)
+	# Normalize bedgraphs
+	normBG = normBGs(bgList, normMethod)
 	## generate bedgraphs
 	print "Aggregating replicates"
 	prefixList = runPool(agregate, [(bams, prefix, faiBed, replicates) for bams, prefix in fList])
+	L, vals = processFiles(prefixList)
+	## Remove outlying coverage
+	if low:
+		times = map(lambda y: y[1], fList)
+		removeLowCoverage(vals, times, plotCoverage)
+	## Normalized agregated files
+	normVals = normalizer(normMethod, vals)
+	normPrefix = map(lambda x: os.path.splitext(x)[0]+'_norm.bedgraph', prefixList)
+	writeVals(L, normVals, normPrefix)
+
+def writeVals(L, vals, files):
+	'''
+	Iterates of a list values and writes each array to a bedgraph file
+
+	Parameters
+	------------------------
+	L	(3,x) tuple of bedgraph coordinates
+	vals	(N,x) numpy array of values
+	files	(N) tuple of output file names
+
+	Returns
+	------------------------
+	'''
+	c,s,l = L
+	for i in range(len(files)):
+		if not os.path.exists(files[i]) or force:
+			if len(vals[i]) != len(l): sys.exit("Lengths don't match")
+			open(files[i], 'w').write('\n'.join(map(lambda w,x,y,z: '\t'.join(map(str, (w,x,y,z))), c,s,l,vals[i])))
 
 def agregate(argList):
+	'''
+	Agregates bedgraph replicates using bedtools map.
+
+	Parameters
+	------------------------
+	argList		Tuple of (bams, prefix, faiBed, method)
+
+	Returns
+	------------------------
+	finalBG		Name of the output bedgraph
+	'''
 	bams, prefix, faiBed, method = argList
 	finalBG = '%s.bedgraph'%(prefix)
-	bgs = ['%s.bedgraph'%(os.path.splitext(bam)[0]) for bam in bams]
+	bgs = ['%s_norm.bedgraph'%(os.path.splitext(bam)[0]) for bam in bams]
 	if not os.path.exists(finalBG) or force:
 		if len(bgs) == 1:
 			os.system('ln -fs %s %s'%(bgs[0], finalBG))
@@ -467,6 +511,17 @@ def agregate(argList):
 	return finalBG
 
 def parseLocations(chroms):
+	'''
+	Returns a dictionary of the start and end indexes of each chromosome that correspond to the location arrays.
+
+	Parameters
+	------------------------
+	chroms		List of chromosomes from L
+
+	Returns
+	------------------------
+	locDict		Dictionary of {chrom:(start,end)} inidces
+	'''
 	ctmp = ""
 	start = 0
 	locDict = {}
@@ -606,7 +661,7 @@ def plotVars(nameList):
 		#          [ES,       MS,       LS,       MSLS,     ESLS,     ESMS,     ESMSLS]
 	else:
 		#print "Using rainbow colors"
-		myColors = map(lambda x: matplotlib.colors.rgb2hex(x[:3]), cm.hsv(np.linspace(0,1,2**len(nameList)-1)))
+		myColors = map(lambda x: matplotlib.colors.rgb2hex(x[:3]), cm.rainbow(np.linspace(0,1,2**len(nameList)-1)))
 	return myColors
 
 def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thresh, pCut, segMeth):
@@ -638,7 +693,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 		thresh = thresholdDict[chrom]
 		print "Using a threshold of %.2f for chromosome %s"%(thresh, chrom)
 		for i in xrange(len(beds)):
-			colorIndex = int(''.join([ '1' if i == j else '0' for j in range(3)]),2)
+			colorIndex = int(''.join([ '1' if i == j else '0' for j in range(len(beds))]),2)
 			outGFF = '%s_%s_%i.smooth.gff3'%(names[i], fSuff[use], level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
