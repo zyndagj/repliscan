@@ -577,6 +577,10 @@ def calcThreshold(vals, locDict, threshMethod, scope, T, P, plotCov):
 				threshDict[chrom] = perThresh(chrVals)
 			else:
 				sys.exit("\nBad thresh method for chromosome coverage: %s\n"%(threshMethod))
+		nonNegMed = np.median(filter(lambda x: x != -1, threshDict.values()))
+		for k,v in threshDict.iteritems():
+			if v == -1:
+				threshDict[k] = nonNegMed
 		return threshDict
 	else:
 		sys.exit("\nBad scope: %s\n"%(scope))
@@ -611,7 +615,8 @@ def autoThresh(vals, name, plotCov):
 		belowMin = cutShoulder[cutShoulder < dMin]
 		thresh = dX[np.max(belowMin)]
 	except:
-		thresh = 1.0
+		#thresh = np.percentile(vals, 25)
+		thresh = -1
 	if plotCov:
 		plotCoverage(dX, d1, thresh, intF, name)
 	return thresh
