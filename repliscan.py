@@ -51,70 +51,70 @@ Methods to handle replicates:
   - mean
   - min
   - max''')
-	parser.add_argument("infile", metavar="FILE", help="File with list of bams")
-	parser.add_argument("-F",metavar='FASTA',help="Fasta file", required=True)
-	parser.add_argument("-L",metavar='INT', help=\
-		"Smoothing level (Default: %(default)s)", default=3, type=int)
-	parser.add_argument("-S",metavar='INT', help=\
-		"Bin size (Default: %(default)s)", default=1000, type=int)
-	parser.add_argument("-A",metavar='STR', help=\
+	parser.add_argument("config", metavar="FILE", help="File with list of bams")
+	parser.add_argument("-r", "--ref", metavar='FASTA',help="Reference fasta", required=True)
+	parser.add_argument("-l", "--level", metavar='INT', help=\
+		"Haar smoothing level (Default: %(default)s)", default=3, type=int)
+	parser.add_argument("-w", "--window", metavar='INT', help=\
+		"Analysis bin size in base pairs (Default: %(default)s)", default=1000, type=int)
+	parser.add_argument("-a", "--aggregate", metavar='STR', help=\
 		"Replicate agregation method (sum|median|mean|min|max) (Default: %(default)s)", default="sum",\
 		type=argChecker(('sum','median','mean','min','max'), 'reducer').check)
-	parser.add_argument("--use",metavar='STR', help=\
-		"Data to use for smoothing/segmentation (log|ratio Default: %(default)s)",\
-		default="ratio", type=argChecker(('log','ratio'),'format').check)
-	parser.add_argument("--norm", metavar='STR', help=\
+	parser.add_argument("-n", "--norm", metavar='STR', help=\
 		"Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="Coverage",\
 		type=argChecker(('DESeq','Coverage'),'normalization method').check)
-	parser.add_argument("--rep", metavar='STR', help=\
-		"Replication Method (threshold|auto|percent) (Default: %(default)s)", default="auto",\
-		type=argChecker(('threshold','auto','percent'),'replication method').check)
-	parser.add_argument("--scope", metavar='STR', help=\
-		"Replication scope (chromosome|genome Default: %(default)s)", default="chromosome",\
+	parser.add_argument("-t", "--threshold", metavar='STR', help=\
+		"Replication threshold method (value|auto|percent) (Default: %(default)s)", default="auto",\
+		type=argChecker(('value','auto','percent'),'replication method').check)
+	parser.add_argument("-S", "--scope", metavar='STR', help=\
+		"Replication scope (chromosome|genome) (Default: %(default)s)", default="chromosome",\
 		type=argChecker(('chromosome','genome'),'replication scope').check)
-	parser.add_argument("-T", metavar='Float', help=\
-		"Threshold Level (Default: %(default)s)", default=0.0, type=float)
-	parser.add_argument("-P", metavar='Float', help=\
-		"Percent Cut (Default: %(default)s)", default=2.0, type=float)
-	parser.add_argument("--seg", metavar='STR', help=\
-		"Segmentation Method (binary|proportion) (Default: %(default)s)", default="proportion",\
-		type=argChecker(('binary','proportion'),'segmentation method').check)
-	parser.add_argument("--low", action="store_true",\
-		help="Remove outlying coverage")
-	parser.add_argument("-f", action="store_true",\
+	parser.add_argument("-v","--value", metavar='Float', help=\
+		"Explicit replication threshold value (Default: %(default)s)", default=1.0, type=float)
+	parser.add_argument("-p","--percent", metavar='Float', help=\
+		"Replication percent cut (Default: %(default)s)", default=2.0, type=float)
+	parser.add_argument("-c", "--classifier", metavar='STR', help=\
+		"Segmentation classification method (binary|proportion) (Default: %(default)s)", default=\
+		"proportion", type=argChecker(('binary','proportion'),'segmentation method').check)
+	parser.add_argument("-R", "--remove", metavar="STR", help=\
+		"Outlying data to remove (none|gamma|norm|whiskers) (Default: %(default)s)", default=\
+		"norm", type=argChecker(("none","gamma","norm","whiskers"), "outlying method").check)
+	parser.add_argument("--log", action="store_true", help=\
+		"Apply log transform to sequenceability ratio (Default: False)")
+	parser.add_argument("-f","--force", action="store_true",\
 		help="Force the re-generation of all files")
 	parser.add_argument("--plot", action='store_true',\
 		help="Plot Statistics")
 	args = parser.parse_args()
-	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
-		fai = args.F+'.fai'
+	if os.path.splitext(args.ref)[1] in ['.fasta','.fa']:
+		fai = args.ref+'.fai'
 	else:
 		sys.exit("Please specify a fasta file\n")
 	# Set force variable
 	global force
-	force = args.f
+	force = args.force
 	#####################################################
 	# Parse exp config
 	#####################################################
-	fList = parseIN(args.infile)
+	fList = parseIN(args.config)
 	#####################################################
 	# Convert BAMs to Bedgraph files
 	#####################################################
-	makeBedgraph(fList, args.F, args.S, args.A.lower(), args.norm, args.low, args.plot)
+	makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), args.norm, args.remove, args.plot)
 	#####################################################
 	# Calculate replication ratio
 	#####################################################
 	chromDict = readFAI(fai)
-	run_logFC(fList, args.use)
+	run_logFC(fList, args.log)
 	#####################################################
 	# Apply Haar Wavelet
 	#####################################################
-	smooth(args.L, fList, chromDict, args.use)
+	smooth(args.level, fList, chromDict, args.log)
 	gc.collect()
 	#####################################################
 	# Perform Segmentation
 	#####################################################
-	makeGFF(fList, chromDict, args.L, args.S, args.plot, args.rep, args.scope, args.use, args.T, args.P, args.seg)
+	makeGFF(fList, chromDict, args.level, args.window, args.plot, args.threshold, args.scope, args.log, args.value, args.percent, args.classifier)
 	print "Done"
 
 def memAvail(p=0.8):
@@ -191,8 +191,8 @@ def normalizer(method, vals):
 	else:
 		sys.exit("%s is not a valid normalization method."%(normMethod))
 
-def run_logFC(fList, use):# thresh=2.5):
-	if use == 'log':
+def run_logFC(fList, useLog):# thresh=2.5):
+	if useLog:
 		fSuff = '_logFC.bedgraph'
 	else:
 		fSuff = '_ratio.bedgraph'
@@ -208,7 +208,7 @@ def run_logFC(fList, use):# thresh=2.5):
 		if not os.path.exists(outName) or force:
 			print "Making %s"%(outName)
 			OF = open(outName,'w')
-			if use == 'log':
+			if useLog:
 				subV = (normVals[bIndex,:]+1.0)/(normVals[0,:]+1.0)
 				lVals = np.log2(subV)
 			else:
@@ -221,62 +221,82 @@ def run_logFC(fList, use):# thresh=2.5):
 				OF.write(outStr)
 			OF.close()
 
-def removeLowCoverage(vals, names, plotCoverage, cut=0.05):
+def removeOutlying(vals, names, plotCoverage, method):
 	'''
-	Remove  2.5% > log(coverage) > 97.5%
-	
-	I originally investigated the possibility of using
-	a poisson distribution or a skewed normal, but the
-	poisson wasn't appropriate for these coverage levels
-	even with the sqrt transform, and the skewed normal
-	was skewed too much by the maximum values. A regular
-	normal distribution on the sqrt transform ended up
-	matching the data the best.
-
-	Normal distribution also didn't fit the data well. The
-	lows were negative and the upper was too large because
-	of the skew. Decded to just take the percentiles of the
-	raw data. This was bad because it just took the the
-	first and last 2.5% of the values.
-
-	Found out the data looks poisson with a log transform.
+	Removes outlying coverage values from the vals matrix in-place.
 	'''
-	lowerP = cut/2.0
-	upperP = 1.0-lowerP
-	print "Removing %.1f%% > coverage > %.1f%%" % (lowerP*100, upperP*100)
-	p = Pool(min((cpu_count(), len(names))))
-	fits = p.map(calcFit, vals)
+	if method == 'none': return
+	func = {'norm':calcNorm, 'gamma':calcGamma, 'whiskers':calcWhisk}
+	N = len(names)
+	p = Pool(min((cpu_count(), N)))
+	cuts = p.map(func[method], zip(vals, names, [plotCoverage]*N))
 	p.close()
 	p.join()
-	for i in range(vals.shape[0]):
-		plt.figure(i)
-		logNZ = np.log(vals[i,vals[i,:] > 0])
-		xMin = min(logNZ)
-		n, b, p = plt.hist(logNZ, label="Data", bins=100, normed=True)
-		yMax = np.max(n)
-		gShape, gLoc, gScale = fits[i]
-		plt.xlim(xMin,max(logNZ))
-		plt.ylim(0,yMax)
-		X = np.arange(xMin, max(logNZ)+0.1, 0.1)
-		lowerCut, upperCut = ss.gamma.ppf([lowerP, upperP], gShape, gLoc, gScale)
-		if plotCoverage:
-			plt.plot(X, ss.gamma.pdf(X,gShape, gLoc, gScale), label="Gamma Fit")
-			plt.legend()
-			plt.fill_between(X, 0, yMax, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
-			plt.title("%s Coverage Cut"%(names[i]))
-			plt.xlabel("log(Reads/Bin)")
-			plt.ylabel("Fraction of Reads")
-			plt.savefig('%s_coverage_cut.png'%(names[i]))	
-		vals[i,vals[i,:] < np.exp(lowerCut)] = 0
-		vals[i,vals[i,:] > np.exp(upperCut)] = 0
+	for i in range(N):
+		vals[i,vals[i,:] < cuts[i][0]] = 0
+		vals[i,vals[i,:] > cuts[i][1]] = 0
 
-def calcFit(V):
-	'''
-	Fits a gamama distribution to a numpy array and returns the parameters.
-	'''
-	logNZ = np.log(V[V > 0])
-	gShape, gLoc, gScale = ss.gamma.fit(logNZ)
-	return (gShape, gLoc, gScale)
+def plotCut(V, name, lowerCut, upperCut):
+	n, b, p = plt.hist(V, label="Data", bins=100, normed=True, color="#03A9F4")
+	minV, maxV, maxY = min(V), max(V), np.max(n)
+	plt.xlim(minV,maxV)
+	plt.ylim(0,maxY)
+	X = np.arange(minV, maxV+0.1, 0.1)
+	plt.fill_between(X, 0, maxY, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
+	plt.title("%s Coverage Cut"%(name))
+	plt.ylabel("Fraction of Reads")
+	return X
+def calcWhisk(argList):
+	V, name, plotCoverage = argList
+	transV = np.log(V[V > 0])
+	q1, q3 = np.percentile(transV, (25,75))
+	iqr = q3-q1
+	lWhisk = q1-1.5*iqr
+	uWhisk = q3+1.5*iqr
+	if plotCoverage:
+		plt.figure(figsize=(10,3))
+		X = plotCut(transV, name, lWhisk, uWhisk)
+		plt.xlabel("log(Reads/Bin)")
+		plt.tight_layout()
+		plt.savefig('%s_coverage_cut.png'%(name))
+	return np.exp((lWhisk, uWhisk))
+def calcGamma(argList):
+	V, name, plotCoverage = argList
+	transV = np.sqrt(V)
+	q1, q3 = np.percentile(transV, (25,75))
+	iqr = q3-q1
+	lWhisk = q1-1.5*iqr
+	uWhisk = q3+1.5*iqr
+	lP, uP = 0.025, 0.975
+	transV = transV[transV < uWhisk]
+	transV = transV[transV > lWhisk]
+	fits = ss.gamma.fit(transV)
+	lowerCut, upperCut = ss.gamma.ppf([lP, uP], *fits)
+	if plotCoverage:
+		plt.figure(figsize=(10,3))
+		X = plotCut(transV, name, lowerCut, upperCut)
+		plt.plot(X, ss.gamma.pdf(X, *fits), label="Gamma Fit", color="#FFC107")
+		plt.legend()
+		plt.xlabel("sqrt(Reads/Bin)")
+		plt.tight_layout()
+		plt.savefig('%s_coverage_cut.png'%(name))
+	return np.power((lowerCut, upperCut), 2)
+def calcNorm(argList):
+	V, name, plotCoverage = argList
+	transV = np.log(V[V > 0])
+	q1, q3 = np.percentile(transV, (25,75))
+	lP, uP = 0.025, 0.975
+	fits = ss.norm.fit(transV)
+	lowerCut, upperCut = ss.norm.ppf([lP, uP], *fits)
+	if plotCoverage:
+		plt.figure(figsize=(10,3))
+		X = plotCut(transV, name, lowerCut, upperCut)
+		plt.plot(X, ss.norm.pdf(X, *fits), label="Normal Fit", color="#FFC107")
+		plt.legend()
+		plt.xlabel("log(Reads/Bin)")
+		plt.tight_layout()
+		plt.savefig('%s_coverage_cut.png'%(name))
+	return np.exp((lowerCut, upperCut))
 
 def processFiles(files):
 	'''
@@ -304,9 +324,9 @@ def parseVals(inFile):
 		vals.append(float(tmp[3]))
 	return vals
 
-def smooth(level, fList, chromDict, use):
+def smooth(level, fList, chromDict, useLog):
 	sortedChroms = sorted(chromDict.keys()[:])
-	if use == 'log':
+	if useLog:
 		fSuff = '_logFC.bedgraph'
 	else:
 		fSuff = '_ratio.bedgraph'
@@ -427,7 +447,7 @@ def runPool(func, args):
 	p.join()
 	return ret
 
-def makeBedgraph(fList, fasta, size, replicates, normMethod, low, plotCoverage):
+def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCoverage):
 	def normBGs(files, normMethod):
 		L, vals = processFiles(files)
 		normVals = normalizer(normMethod, vals)
@@ -438,31 +458,47 @@ def makeBedgraph(fList, fasta, size, replicates, normMethod, low, plotCoverage):
 	faiBed = "%s.%i.bed"%(fasta,size)
 	sortedChroms = sorted(readFAI(fai).keys())
 	memG = memAvail()
-	## Make reference windows
+	##########################################
+	# Make reference windows
+	##########################################
 	if not os.path.exists(fai) or force:
 		print "Making fai index"
 		os.system("samtools faidx %s"%(fasta))
 	if not os.path.exists(faiBed) or force:
 		print "Making %ibp window bed from FAI"%(size)
 		os.system("export LC_ALL=C; bedtools makewindows -g %s -w %i | sort -S %iG -k1,1 -k2,2n > %s"%(fai,size,memG,faiBed))
-	## generate sorted beds
+	##########################################
+	# Convert bam to sorted bed
+	##########################################
 	print "Converting bam to bed"
 	bamList = [bam for bams, prefix in fList for bam in bams]
 	bedList = runPool(bamtobed, bamList)
+	##########################################
 	# Convert bed to bedgraph
+	##########################################
 	print "Converting bed to bedgraph"
 	bgList = runPool(bedtobedgraph, [(faiBed, bed) for bed in bedList])
-	# Normalize bedgraphs
-	normBG = normBGs(bgList, normMethod)
-	## generate bedgraphs
+	##########################################
+	# Normalize replicates unless using sum
+	##########################################
+	if aggMethod == "sum":
+		normBG = bgList
+	else:
+		normBG = normBGs(bgList, normMethod)
+	##########################################
+	# Aggregate replicates
+	##########################################
 	print "Aggregating replicates"
-	prefixList = runPool(agregate, [(bams, prefix, faiBed, replicates) for bams, prefix in fList])
+	prefixList = runPool(agregate, [(bams, prefix, faiBed, aggMethod) for bams, prefix in fList])
 	L, vals = processFiles(prefixList)
-	## Remove outlying coverage
-	if low:
-		times = map(lambda y: y[1], fList)
-		removeLowCoverage(vals, times, plotCoverage)
-	## Normalized agregated files
+	##########################################
+	# Remove outlying coverage
+	##########################################
+	times = map(lambda y: y[1], fList)
+	removeOutlying(vals, times, plotCoverage, removeWhat)
+	##########################################
+	# Normalized agregated files
+	##########################################
 	normVals = normalizer(normMethod, vals)
 	normPrefix = map(lambda x: os.path.splitext(x)[0]+'_norm.bedgraph', prefixList)
 	writeVals(L, normVals, normPrefix)
@@ -500,7 +536,10 @@ def agregate(argList):
 	'''
 	bams, prefix, faiBed, method = argList
 	finalBG = '%s.bedgraph'%(prefix)
-	bgs = ['%s_norm.bedgraph'%(os.path.splitext(bam)[0]) for bam in bams]
+	if method == 'sum':
+		bgs = ['%s.bedgraph'%(os.path.splitext(bam)[0]) for bam in bams]
+	else:
+		bgs = ['%s_norm.bedgraph'%(os.path.splitext(bam)[0]) for bam in bams]
 	if not os.path.exists(finalBG) or force:
 		if len(bgs) == 1:
 			os.system('ln -fs %s %s'%(bgs[0], finalBG))
@@ -552,18 +591,18 @@ def plotCoverage(dX, d1, thresh, intF, chrom):
 	plt.savefig("%s_fig.png"%(chrom))
 	plt.clf()
 
-def calcThreshold(vals, locDict, threshMethod, scope, T, P, plotCov):
+def calcThreshold(vals, locDict, threshMethod, scope, T, pCut, plotCov):
 	'''
-	>>> calcThreshold([0,2,1], {1:(2,3), 2:(4,5)}, 'threshold', 'genome', 1.0, 2.5, True)
+	>>> calcThreshold([0,2,1], {1:(2,3), 2:(4,5)}, 'value', 'genome', 1.0, 2.5, True)
 	{1: 1.0, 2: 1.0}
 	'''
-	if threshMethod == 'threshold':
+	if threshMethod == 'value':
 		return dict.fromkeys(locDict, T)
 	if scope == 'genome':
 		if threshMethod == 'auto':
 			thresh = autoThresh(vals, 'genome', plotCov)
 		elif threshMethod == 'percent':
-			thresh = perThresh(vals)
+			thresh = perThresh(vals, pCut)
 		else:
 			sys.exit("\nBad thresh method for genome coverage: %s\n"%(threshMethod))
 		return dict.fromkeys(locDict, thresh)
@@ -574,7 +613,7 @@ def calcThreshold(vals, locDict, threshMethod, scope, T, P, plotCov):
 			if threshMethod == 'auto':
 				threshDict[chrom] = autoThresh(chrVals, chrom, plotCov)
 			elif threshMethod == 'percent':
-				threshDict[chrom] = perThresh(chrVals)
+				threshDict[chrom] = perThresh(chrVals, pCut)
 			else:
 				sys.exit("\nBad thresh method for chromosome coverage: %s\n"%(threshMethod))
 		nonNegMed = np.median(filter(lambda x: x != -1, threshDict.values()))
@@ -658,7 +697,7 @@ def plotVars(nameList):
 	>>> plotVars(['E','M','L'])
 	['#FB0018', '#1A8A12', '#FFFD33', '#2250F1', '#EA3CF2', '#28C5CC', '#FAB427']
 	>>> plotVars(['A','B','C'])
-	[u'#ff0000', u'#fcf500', u'#08ff00', u'#00fff6', u'#0010ff', u'#ee00ff', u'#ff0018']
+	[u'#8000ff', u'#2c7ef7', u'#2adddd', u'#80ffb4', u'#d4dd80', u'#ff7e41', u'#ff0000']
 	'''
 	if nameList == ['ES','MS','LS'] or nameList == ['E','M','L']:
 		#print "Using ES, MS, LS colors"
@@ -669,14 +708,14 @@ def plotVars(nameList):
 		myColors = map(lambda x: matplotlib.colors.rgb2hex(x[:3]), cm.rainbow(np.linspace(0,1,2**len(nameList)-1)))
 	return myColors
 
-def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thresh, pCut, segMeth):
+def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, useLog, thresh, pCut, segMeth):
 	sortedChroms = sorted(chromDict.keys()[:])
-	fSuff = {'log':'logFC', 'ratio':'ratio'}
-	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff[use], level), fList[1:])
+	fSuff = {True:'logFC', False:'ratio'}[useLog]
+	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff, level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
 	plotColors = plotVars(names)
 	for name in names:
-		outGFF = '%s_%s_%i.smooth.gff3'%(name, fSuff[use], level)
+		outGFF = '%s_%s_%i.smooth.gff3'%(name, fSuff, level)
 		open(outGFF,'w').write('##gff-version 3\n#track name="%s %ibp" gffTags=on\n' % (name,S))
 	#open(fSuff[use]+"_segmentation.gff3",'w').write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
 	print "Parsing :",beds
@@ -684,7 +723,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 	locDict = parseLocations(L[0])
 	print "Calculating thresholds..."
 	thresholdDict = calcThreshold(vals, locDict, threshMethod, scope, thresh, pCut, plotCov)
-	OS = open(fSuff[use]+'_segmentation.gff3','w')
+	OS = open(fSuff+'_segmentation.gff3','w')
 	OS.write('##gff-version 3\n#track name="Segmentation %ibp" gffTags=on\n'%(S))
 	segCount = 1
 	counts = np.ones(len(beds))
@@ -699,7 +738,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, use, thres
 		print "Using a threshold of %.2f for chromosome %s"%(thresh, chrom)
 		for i in xrange(len(beds)):
 			colorIndex = int(''.join([ '1' if i == j else '0' for j in range(len(beds))]),2)
-			outGFF = '%s_%s_%i.smooth.gff3'%(names[i], fSuff[use], level)
+			outGFF = '%s_%s_%i.smooth.gff3'%(names[i], fSuff, level)
 			outSignal = vals[i,s:e]
 			bMask = np.zeros(len(outSignal), dtype=np.bool)
 			bMask[outSignal > thresh] = 1
