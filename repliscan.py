@@ -77,8 +77,8 @@ Methods to handle replicates:
 		"Segmentation classification method (binary|proportion) (Default: %(default)s)", default=\
 		"proportion", type=argChecker(('binary','proportion'),'segmentation method').check)
 	parser.add_argument("-R", "--remove", metavar="STR", help=\
-		"Outlying data to remove (none|gamma|norm|whiskers) (Default: %(default)s)", default=\
-		"norm", type=argChecker(("none","gamma","norm","whiskers"), "outlying method").check)
+		"Outlying data to remove (none|lognGamma|sqrtGamma|norm|whiskers) (Default: %(default)s)", default=\
+		"norm", type=argChecker(("none","lognGamma","sqrtGamma","norm","whiskers"), "outlying method").check)
 	parser.add_argument("--log", action="store_true", help=\
 		"Apply log transform to sequenceability ratio (Default: False)")
 	parser.add_argument("-f","--force", action="store_true",\
@@ -226,7 +226,7 @@ def removeOutlying(vals, names, plotCoverage, method):
 	Removes outlying coverage values from the vals matrix in-place.
 	'''
 	if method == 'none': return
-	func = {'norm':calcNorm, 'gamma':calcGamma, 'whiskers':calcWhisk}
+	func = {'norm':calcNorm, 'sqrtGamma':sqrtGamma, 'whiskers':calcWhisk, 'lognGamma':lognGamma}
 	N = len(names)
 	p = Pool(min((cpu_count(), N)))
 	cuts = p.map(func[method], zip(vals, names, [plotCoverage]*N))
@@ -235,7 +235,22 @@ def removeOutlying(vals, names, plotCoverage, method):
 	for i in range(N):
 		vals[i,vals[i,:] < cuts[i][0]] = 0
 		vals[i,vals[i,:] > cuts[i][1]] = 0
-
+def lognGamma(argList):
+	V, name, plotCoverage = argList
+	cut = 0.05
+	lowerP, upperP = cut/2.0, 1.0-cut/2.0
+	transV = np.log(V[V > 0])
+	fits = ss.gamma.fit(transV)
+	lowerCut, upperCut = ss.gamma.ppf([lowerP, upperP], *fits)
+	if plotCoverage:
+		plt.figure(figsize=(10,3))
+		X = plotCut(transV, name, lowerCut, upperCut)
+		plt.plot(X, ss.gamma.pdf(X, *fits), label="Gamma Fit", color="#FFC107", lw=2)
+		plt.legend()
+		plt.xlabel("log(Reads/Bin)")
+		plt.tight_layout()
+		plt.savefig('%s_coverage_cut.png'%(name))
+	return np.exp((lowerCut, upperCut))
 def plotCut(V, name, lowerCut, upperCut):
 	n, b, p = plt.hist(V, label="Data", bins=100, normed=True, color="#03A9F4")
 	minV, maxV, maxY = min(V), max(V), np.max(n)
@@ -260,7 +275,7 @@ def calcWhisk(argList):
 		plt.tight_layout()
 		plt.savefig('%s_coverage_cut.png'%(name))
 	return np.exp((lWhisk, uWhisk))
-def calcGamma(argList):
+def sqrtGamma(argList):
 	V, name, plotCoverage = argList
 	transV = np.sqrt(V)
 	q1, q3 = np.percentile(transV, (25,75))
@@ -275,7 +290,7 @@ def calcGamma(argList):
 	if plotCoverage:
 		plt.figure(figsize=(10,3))
 		X = plotCut(transV, name, lowerCut, upperCut)
-		plt.plot(X, ss.gamma.pdf(X, *fits), label="Gamma Fit", color="#FFC107")
+		plt.plot(X, ss.gamma.pdf(X, *fits), label="Gamma Fit", color="#FFC107", lw=2)
 		plt.legend()
 		plt.xlabel("sqrt(Reads/Bin)")
 		plt.tight_layout()
@@ -291,7 +306,7 @@ def calcNorm(argList):
 	if plotCoverage:
 		plt.figure(figsize=(10,3))
 		X = plotCut(transV, name, lowerCut, upperCut)
-		plt.plot(X, ss.norm.pdf(X, *fits), label="Normal Fit", color="#FFC107")
+		plt.plot(X, ss.norm.pdf(X, *fits), label="Normal Fit", color="#FFC107", lw=2)
 		plt.legend()
 		plt.xlabel("log(Reads/Bin)")
 		plt.tight_layout()

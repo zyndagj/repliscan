@@ -78,7 +78,7 @@ LS	LS.bam
 |-v, --value|Float|Explicit replication threshold value \[1.0\]|
 |-p, --percent|Float|Replication percent cut \[2.0\]|
 |-c, --classifier|STR|Segmentation classification method \[binary|**proportion**\]|
-|-R, --remove|STR|Outlying data to remove \[none|gamma|**norm**|whiskers\]|
+|-R, --remove|STR|Outlying data to remove \[none|sqrtGamma|lognGamma|**norm**|whiskers\]|
 |--log| |Apply log transform to sequenceability ratio|
 |-f, --force| |Force the re-generation of all files|
 |--plot| |Plot Statistics|
@@ -86,7 +86,7 @@ LS	LS.bam
 
 ### Sequencability Method
 - `default` - \(sample/control\)
-- `--log` - log\(sample/control\) *Default*
+- `--log` - log\(sample/control\)
 
 ### Normalization Methods
 - `DESeq` - DESeq size normalization using geometric mean.
