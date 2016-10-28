@@ -71,14 +71,14 @@ LS	LS.bam
 |-r, --ref|**FASTA**|Reference fasta|
 |-l,--level|INT|Haar smoothing level \[1,2,**3**,4,5\]|
 |-w, --window|INT|Analysis bin size in base pairs - **1000**|
-|-a, --aggregate|STR|Replicate agregation method \(**sum**, median, mean, min, max\)|
+|-a, --aggregate|STR|Replicate agregation method \[**sum**, median, mean, min, max\]|
 |-n, --norm|STR|Normalization Method \[DESeq, **Coverage**\]|
 |-t, --threshold|STR|Replication threshold method \[value, **auto**, percent\]|
 |-v, --value|Float|Explicit replication threshold value \[1.0\]|
 |-p, --percent|Float|Replication percent cut \[2.0\]|
 |-S,--scope|STR|Replication scope \[**chromosome**, genome\]|
-|-c, --classifier|STR|Segmentation classification method \[binary|**proportion**\]|
-|-R, --remove|STR|Outlying data to remove \[none|sqrtGamma|lognGamma|**norm**|whiskers\]|
+|-c, --classifier|STR|Segmentation classification method \[binary, **proportion**\]|
+|-R, --remove|STR|Outlying data to remove \[none, sqrtGamma, lognGamma, **norm**, whiskers\]|
 |--log| |Apply log transform to sequenceability ratio|
 |-f, --force| |Force the re-generation of all files|
 |--plot| |Plot Statistics|
