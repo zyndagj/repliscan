@@ -369,7 +369,7 @@ def smooth(level, fList, chromDict, useLog):
 			for chr in sortedChroms:
 				locCmd = "grep '^%s\s' %s | cut -f 1-3"%(chr, bed)
 				valCmd = "grep '^%s\s' %s | cut -f 4 | wavelets --level %i --to-stdout --boundary reflected --filter Haar -" % (chr, bed, level)
-				awkCmd = "awk '{if (NR == 4) print $0;}'"
+				awkCmd = "awk '{if (NF == 4) print \$0;}'"
 				os.system('bash -c "paste <( %s ) <( %s ) | %s >> %s"'%(locCmd, valCmd, awkCmd, outFile))
 	gc.collect()
 
@@ -488,7 +488,7 @@ def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCove
 	fai = fasta+".fai"
 	faiBed = "%s.%i.bed"%(fasta,size)
 	sortedChroms = sorted(readFAI(fai).keys())
-	memG = memAvail()
+	#memG = memAvail()
 	##########################################
 	# Make reference windows
 	##########################################
