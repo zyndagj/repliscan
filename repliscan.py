@@ -60,25 +60,27 @@ Methods to handle replicates:
 	parser.add_argument("-a", "--aggregate", metavar='STR', help=\
 		"Replicate agregation method (sum|median|mean|min|max) (Default: %(default)s)", default="sum",\
 		type=argChecker(('sum','median','mean','min','max'), 'reducer').check)
-	parser.add_argument("-n", "--norm", metavar='STR', help=\
-		"Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="Coverage",\
-		type=argChecker(('DESeq','Coverage'),'normalization method').check)
+	#parser.add_argument("-n", "--norm", metavar='STR', help=\
+	#	"Normalization Method (DESeq|Coverage) (Default: %(default)s)", default="Coverage",\
+	#	type=argChecker(('DESeq','Coverage'),'normalization method').check)
 	parser.add_argument("-t", "--threshold", metavar='STR', help=\
 		"Replication threshold method (value|auto|percent) (Default: %(default)s)", default="auto",\
 		type=argChecker(('value','auto','percent'),'replication method').check)
 	parser.add_argument("-S", "--scope", metavar='STR', help=\
 		"Replication scope (chromosome|genome) (Default: %(default)s)", default="chromosome",\
 		type=argChecker(('chromosome','genome'),'replication scope').check)
-	parser.add_argument("-v","--value", metavar='Float', help=\
-		"Explicit replication threshold value (Default: %(default)s)", default=1.0, type=float)
-	parser.add_argument("-p","--percent", metavar='Float', help=\
-		"Replication percent cut (Default: %(default)s)", default=2.0, type=float)
+	parser.add_argument("-v","--value", metavar='FLOAT', help=\
+		"Explicit replication threshold value of [%(default)s] when using '-t value'", default=1.0, type=float)
+	parser.add_argument("--prep", metavar='FLOAT', help=\
+		"Consider the lowest [%(default)s]%% of the signal to be noise and not replicating when using '-t percent'", default=2.0, type=float)
 	parser.add_argument("-c", "--classifier", metavar='STR', help=\
 		"Segmentation classification method (binary|proportion) (Default: %(default)s)", default=\
 		"proportion", type=argChecker(('binary','proportion'),'segmentation method').check)
 	parser.add_argument("-R", "--remove", metavar="STR", help=\
-		"Outlying data to remove (none|lognGamma|sqrtGamma|norm|whiskers) (Default: %(default)s)", default=\
-		"norm", type=argChecker(("none","lognGamma","sqrtGamma","norm","whiskers"), "outlying method").check)
+		"Outlying data to remove (none|lognGamma|sqrtGamma|norm|whiskers|percentile) (Default: %(default)s)", default=\
+		"norm", type=argChecker(("none","lognGamma","sqrtGamma","norm","whiskers","percentile"), "outlying method").check)
+	parser.add_argument("--pcut", metavar='FLOAT', help=\
+		"Remove the upper and lower [%(default)s]%% of the data when using '-R percentile'", default=2.5, type=float)
 	parser.add_argument("--log", action="store_true", help=\
 		"Apply log transform to sequenceability ratio (Default: False)")
 	parser.add_argument("-f","--force", action="store_true",\
@@ -100,12 +102,13 @@ Methods to handle replicates:
 	#####################################################
 	# Convert BAMs to Bedgraph files
 	#####################################################
-	makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), args.norm, args.remove, args.plot)
+	#L, normVals = makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), args.norm, args.remove, args.plot)
+	L, normVals = makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), 'Coverage', args.remove, args.plot, args.pcut)
 	#####################################################
 	# Calculate replication ratio
 	#####################################################
 	chromDict = readFAI(fai)
-	run_logFC(fList, args.log)
+	run_logFC(fList, args.log, L, normVals)
 	#####################################################
 	# Apply Haar Wavelet
 	#####################################################
@@ -114,7 +117,7 @@ Methods to handle replicates:
 	#####################################################
 	# Perform Segmentation
 	#####################################################
-	makeGFF(fList, chromDict, args.level, args.window, args.plot, args.threshold, args.scope, args.log, args.value, args.percent, args.classifier)
+	makeGFF(fList, chromDict, args.level, args.window, args.plot, args.threshold, args.scope, args.log, args.value, args.prep, args.classifier)
 	print "Done"
 
 def memAvail(p=0.8):
@@ -147,6 +150,7 @@ def normalizer(method, vals):
 		       [ 0.75,  1.  ,  1.25]])
 		'''
 		sums = np.sum(vals,axis=1)
+		#sums = np.sum(vals,axis=1, dtype=np.long)
 		nVals = np.float(vals.shape[1])
 		return vals*(nVals/sums.reshape(len(sums),1))
 	def DENormalize(vals):
@@ -191,14 +195,14 @@ def normalizer(method, vals):
 	else:
 		sys.exit("%s is not a valid normalization method."%(normMethod))
 
-def run_logFC(fList, useLog):# thresh=2.5):
+def run_logFC(fList, useLog, L, normVals):# thresh=2.5):
 	if useLog:
 		fSuff = '_logFC.bedgraph'
 	else:
 		fSuff = '_ratio.bedgraph'
 	beds = map(lambda y: y[1]+"_norm.bedgraph", fList)
 	print "Making LogFold Files From:", beds
-	L, normVals = processFiles(beds)
+	#L, normVals = processFiles(beds)
 	#threshVals(naVals[0,:], thresh) # raise low counts to minimal coverage in G1
 	# Dont think I need to do this anymore
 	# Remove coverage levels below 2.5% and above 97.5%
@@ -221,22 +225,22 @@ def run_logFC(fList, useLog):# thresh=2.5):
 				OF.write(outStr)
 			OF.close()
 
-def removeOutlying(vals, names, plotCoverage, method):
+def removeOutlying(vals, names, plotCoverage, method, pOut):
 	'''
 	Removes outlying coverage values from the vals matrix in-place.
 	'''
 	if method == 'none': return
-	func = {'norm':calcNorm, 'sqrtGamma':sqrtGamma, 'whiskers':calcWhisk, 'lognGamma':lognGamma}
+	func = {'norm':calcNorm, 'sqrtGamma':sqrtGamma, 'whiskers':calcWhisk, 'lognGamma':lognGamma, 'percentile':calcPercentile}
 	N = len(names)
 	p = Pool(min((cpu_count(), N)))
-	cuts = p.map(func[method], zip(vals, names, [plotCoverage]*N))
+	cuts = p.map(func[method], zip(vals, names, [plotCoverage]*N, [pOut]*N))
 	p.close()
 	p.join()
 	for i in range(N):
 		vals[i,vals[i,:] < cuts[i][0]] = 0
 		vals[i,vals[i,:] > cuts[i][1]] = 0
 def lognGamma(argList):
-	V, name, plotCoverage = argList
+	V, name, plotCoverage, pOut = argList
 	cut = 0.05
 	lowerP, upperP = cut/2.0, 1.0-cut/2.0
 	transV = np.log(V[V > 0])
@@ -262,7 +266,7 @@ def plotCut(V, name, lowerCut, upperCut):
 	plt.ylabel("Fraction of Reads")
 	return X
 def calcWhisk(argList):
-	V, name, plotCoverage = argList
+	V, name, plotCoverage, pOut = argList
 	transV = np.log(V[V > 0])
 	q1, q3 = np.percentile(transV, (25,75))
 	iqr = q3-q1
@@ -275,8 +279,19 @@ def calcWhisk(argList):
 		plt.tight_layout()
 		plt.savefig('%s_coverage_cut.png'%(name))
 	return np.exp((lWhisk, uWhisk))
+def calcPercentile(argList):
+	V, name, plotCoverage, pOut = argList
+	transV = np.log(V[V > 0])
+	q1, q3 = np.percentile(transV, (pOut, 1-pOut))
+	if plotCoverage:
+		plt.figure(figsize=(10,3))
+		X = plotCut(transV, name, q1, q3)
+		plt.xlabel("log(Reads/Bin)")
+		plt.tight_layout()
+		plt.savefig('%s_coverage_cut.png'%(name))
+	return np.exp((q1, q3))
 def sqrtGamma(argList):
-	V, name, plotCoverage = argList
+	V, name, plotCoverage, pOut = argList
 	transV = np.sqrt(V)
 	q1, q3 = np.percentile(transV, (25,75))
 	iqr = q3-q1
@@ -297,7 +312,7 @@ def sqrtGamma(argList):
 		plt.savefig('%s_coverage_cut.png'%(name))
 	return np.power((lowerCut, upperCut), 2)
 def calcNorm(argList):
-	V, name, plotCoverage = argList
+	V, name, plotCoverage, pOut = argList
 	transV = np.log(V[V > 0])
 	q1, q3 = np.percentile(transV, (25,75))
 	lP, uP = 0.025, 0.975
@@ -352,9 +367,10 @@ def smooth(level, fList, chromDict, useLog):
 		if not os.path.exists(outFile) or force:
 			os.system('[ -e %s ] && rm %s'%(outFile, outFile))
 			for chr in sortedChroms:
-				locCmd = 'grep "^%s\s" %s | cut -f 1-3'%(chr, bed)
-				valCmd = 'grep "^%s\s" %s | cut -f 4 | wavelets --level %i --to-stdout --boundary reflected --filter Haar -' % (chr, bed, level)
-				os.system("bash -c 'paste <( %s ) <( %s ) >> %s'"%(locCmd, valCmd, outFile))
+				locCmd = "grep '^%s\s' %s | cut -f 1-3"%(chr, bed)
+				valCmd = "grep '^%s\s' %s | cut -f 4 | wavelets --level %i --to-stdout --boundary reflected --filter Haar -" % (chr, bed, level)
+				awkCmd = "awk '{if (NR == 4) print $0;}'"
+				os.system('bash -c "paste <( %s ) <( %s ) | %s >> %s"'%(locCmd, valCmd, awkCmd, outFile))
 	gc.collect()
 
 def geometricMean(M):
@@ -462,7 +478,7 @@ def runPool(func, args):
 	p.join()
 	return ret
 
-def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCoverage):
+def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCoverage, pOut):
 	def normBGs(files, normMethod):
 		L, vals = processFiles(files)
 		normVals = normalizer(normMethod, vals)
@@ -510,13 +526,14 @@ def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCove
 	# Remove outlying coverage
 	##########################################
 	times = map(lambda y: y[1], fList)
-	removeOutlying(vals, times, plotCoverage, removeWhat)
+	removeOutlying(vals, times, plotCoverage, removeWhat, pOut)
 	##########################################
 	# Normalized agregated files
 	##########################################
 	normVals = normalizer(normMethod, vals)
 	normPrefix = map(lambda x: os.path.splitext(x)[0]+'_norm.bedgraph', prefixList)
 	writeVals(L, normVals, normPrefix)
+	return (L, normVals)
 
 def writeVals(L, vals, files):
 	'''
@@ -724,7 +741,6 @@ def plotVars(nameList):
 	return myColors
 
 def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, useLog, thresh, pCut, segMeth):
-	sortedChroms = sorted(chromDict.keys()[:])
 	fSuff = {True:'logFC', False:'ratio'}[useLog]
 	beds = map(lambda y: "%s_%s_%i.smooth.bedgraph"%(y[1], fSuff, level), fList[1:])
 	names = map(lambda y: y[1], fList[1:])
@@ -736,6 +752,7 @@ def makeGFF(fList, chromDict, level, S, plotCov, threshMethod, scope, useLog, th
 	print "Parsing :",beds
 	L, vals = processFiles(beds)
 	locDict = parseLocations(L[0])
+	sortedChroms = sorted(locDict.keys()[:])
 	print "Calculating thresholds..."
 	thresholdDict = calcThreshold(vals, locDict, threshMethod, scope, thresh, pCut, plotCov)
 	OS = open(fSuff+'_segmentation.gff3','w')
