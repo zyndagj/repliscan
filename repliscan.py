@@ -107,11 +107,11 @@ Methods to handle replicates:
 	#####################################################
 	# Calculate replication ratio
 	#####################################################
-	chromDict = readFAI(fai)
 	run_logFC(fList, args.log, L, normVals)
 	#####################################################
 	# Apply Haar Wavelet
 	#####################################################
+	chromDict = readFAI(fai, args.window)
 	smooth(args.level, fList, chromDict, args.log)
 	gc.collect()
 	#####################################################
@@ -369,8 +369,7 @@ def smooth(level, fList, chromDict, useLog):
 			for chr in sortedChroms:
 				locCmd = "grep '^%s\s' %s | cut -f 1-3"%(chr, bed)
 				valCmd = "grep '^%s\s' %s | cut -f 4 | wavelets --level %i --to-stdout --boundary reflected --filter Haar -" % (chr, bed, level)
-				awkCmd = "awk '{if (NR == 4) print $0;}'"
-				os.system('bash -c "paste <( %s ) <( %s ) | %s >> %s"'%(locCmd, valCmd, awkCmd, outFile))
+				os.system('bash -c "paste <( %s ) <( %s ) >> %s"'%(locCmd, valCmd, outFile))
 	gc.collect()
 
 def geometricMean(M):
@@ -388,7 +387,7 @@ def geometricMean(M):
 	'''
 	return np.prod(M,axis=0)**(1.0/M.shape[0])
 
-def readFAI(inFile):
+def readFAI(inFile, windowSize):
 	'''
 	Returns (length, seek, read length, readlength + newline)
 	'''
@@ -397,7 +396,8 @@ def readFAI(inFile):
 	for line in open(inFile,'r'):
 		tmp = line.split('\t')
 		#chromDict[tmp[0]] = tuple(map(int, tmp[1:]))
-		chromDict[tmp[0]] = int(tmp[1])
+		if int(tmp[1])/windowSize > 30:
+			chromDict[tmp[0]] = int(tmp[1])
 	return chromDict
 
 def parseIN(inFile):
@@ -487,7 +487,6 @@ def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCove
 		return normList
 	fai = fasta+".fai"
 	faiBed = "%s.%i.bed"%(fasta,size)
-	sortedChroms = sorted(readFAI(fai).keys())
 	memG = memAvail()
 	##########################################
 	# Make reference windows
@@ -497,7 +496,8 @@ def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCove
 		os.system("samtools faidx %s"%(fasta))
 	if not os.path.exists(faiBed) or force:
 		print "Making %ibp window bed from FAI"%(size)
-		os.system("export LC_ALL=C; bedtools makewindows -g %s -w %i | sort -S %iG -k1,1 -k2,2n > %s"%(fai,size,memG,faiBed))
+		windowCMD="export LC_ALL=C; bedtools makewindows -g %s -w %i | sort -S %iG -k1,1 -k2,2n > %s"%(fai,size,memG,faiBed)
+		os.system(windowCMD)
 	##########################################
 	# Convert bam to sorted bed
 	##########################################
@@ -552,7 +552,7 @@ def writeVals(L, vals, files):
 	for i in range(len(files)):
 		if not os.path.exists(files[i]) or force:
 			if len(vals[i]) != len(l): sys.exit("Lengths don't match")
-			open(files[i], 'w').write('\n'.join(map(lambda w,x,y,z: '\t'.join(map(str, (w,x,y,z))), c,s,l,vals[i])))
+			open(files[i], 'w').write('\n'.join(map(lambda w,x,y,z: '\t'.join(map(str, (w,x,y,z))), c,s,l,vals[i]))+'\n')
 
 def agregate(argList):
 	'''
@@ -578,7 +578,8 @@ def agregate(argList):
 		else:
 			print "Merging with %s\n- "%(method)+'\n- '.join(bgs)
 			bgStr = ' '.join(bgs)
-			os.system("export LC_ALL=C; sort -m -S 1G -k1,1 -k2,2n %s | bedtools map -a %s -b stdin -c 4 -o %s > %s"%(bgStr, faiBed, method, finalBG))
+			mapStr = "export LC_ALL=C; sort -m -S 1G -k1,1 -k2,2n %s | bedtools map -a %s -b - -c 4 -o %s > %s"%(bgStr, faiBed, method, finalBG)
+			os.system(mapStr)
 	return finalBG
 
 def parseLocations(chroms):

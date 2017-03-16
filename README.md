@@ -123,3 +123,17 @@ you can specify the method by which they are aggregated with the `-a` paramter. 
  - `[time]_(logFC|ratio)_*.smooth.bedgraph` - Ratio signal smoothed using a specified level of Haar wavelet
  - `[time]_(logFC|ratio)_*.smooth.gff3` - GFF showing replicating regions
  - `(logFC|ratio)_segmentation.gff3` -  Segmentation GFF, which can be used as input for `RATrap.py`
+
+## Example Results
+
+The continuous, LOESS smoothed results of [Lubelsky et al.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4079966/) were replicated and also run with Repliscan. These methods can be replicated by downloading the following files:
+
+- [README.txt](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/README.txt)
+- [input_2S.txt](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/input_2S.txt)
+- [input_4S.txt](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/input_4S.txt)
+- [lubelsky2014.csv](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/lubelsky2014.csv)
+- [replicate_continuous.sh](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/replicate_continuous.sh)
+
+These results can also be immediately viewed by downloading an loading this pre-generated IGV session.
+
+[lubelsky_dmel_IGV.xml](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/lubelsky_dmel_IGV.xml)
