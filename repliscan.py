@@ -369,12 +369,7 @@ def smooth(level, fList, chromDict, useLog):
 			for chr in sortedChroms:
 				locCmd = "grep '^%s\s' %s | cut -f 1-3"%(chr, bed)
 				valCmd = "grep '^%s\s' %s | cut -f 4 | wavelets --level %i --to-stdout --boundary reflected --filter Haar -" % (chr, bed, level)
-<<<<<<< HEAD
 				os.system('bash -c "paste <( %s ) <( %s ) >> %s"'%(locCmd, valCmd, outFile))
-=======
-				awkCmd = "awk '{if (NF == 4) print \$0;}'"
-				os.system('bash -c "paste <( %s ) <( %s ) | %s >> %s"'%(locCmd, valCmd, awkCmd, outFile))
->>>>>>> b7feb8a0ec3c661af78dd1af9bdf8c6433086082
 	gc.collect()
 
 def geometricMean(M):
