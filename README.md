@@ -1,5 +1,5 @@
 # Repliscan - Logfold Reptiming Pipeline
-Pipeline for calculating reptiming enrichment and classifying the time replication took place.
+Pipeline for calculating Repli-seq enrichment and classifying the time replication took place.
 
 ## Dependencies
 The following binaries need to exist on the user's PATH:
@@ -18,20 +18,26 @@ The following binaries need to exist on the user's PATH:
    ```
 3. wavelets - http://staff.washington.edu/dbp/WMTSA/NEPH/wavelets.html
    
-   Installation
-   ```
-   $ tar -xzf wavelets.tgz
-   $ cd wavelets/src
-   $ make
-   $ cd ../bin
-   $ cp wavelets [to somewhere on bin path]
-   ```
+   Now provided with Repliscan
 4. python
 
    From Stampede @ TACC
    ```
    $ module load python
    ```
+
+## Installation
+
+Install Repliscan
+```
+pip install --user git+https://github.com/zyndagj/repliscan.git
+```
+
+Add Repliscan to $PATH
+```
+export PATH=${PATH}:$HOME/.local/bin
+```
+Add this line to `$HOME/.profile` or `$HOME/.bashrc` to make this permanent.
 
 ## Methods
 
