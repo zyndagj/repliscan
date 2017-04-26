@@ -41,9 +41,9 @@ The following binaries need to exist on the user's PATH:
 
 ### Usage
 ```
-repliscan.py [-h] -r FASTA [-l INT] [-w INT] [-a STR] [-n STR] [-t STR]
-             [-S STR] [-v Float] [-p Float] [-c STR] [-R STR] [--log]
-             [-f] [--plot] FILE
+repliscan.py [-h] -r FASTA [-l INT] [-w INT] [-a STR] [-t STR] [-S STR]
+             [-v FLOAT] [--prep FLOAT] [-c STR] [-R STR] [--pcut FLOAT]
+             [--log] [-f] [--plot] FILE
 ```
 
 ### Input TXT - FILE
@@ -64,6 +64,15 @@ MS	MS_001.bam	MS_L1.bam	MS_L2.bam
 LS	LS.bam
 ```
 
+When a G1 control is not produced in a Repli-seq experimental protocol as in the two examples below, a total-S can be synthesised from inside the input as shown. Just make sure that you aggregate these "replicates" using a sum opperation (`-a`).
+
+```
+G1	ES.bam	MS.bam	LS.bam
+ES	ES.bam
+MS	MS.bam
+LS	LS.bam
+```
+
 ### Arguments
 
 | Flag | Option | Description - Bold denotes Default|
@@ -72,13 +81,13 @@ LS	LS.bam
 |-l,--level|INT|Haar smoothing level \[1,2,**3**,4,5\]|
 |-w, --window|INT|Analysis bin size in base pairs - **1000**|
 |-a, --aggregate|STR|Replicate agregation method \[**sum**, median, mean, min, max\]|
-|-n, --norm|STR|Normalization Method \[DESeq, **Coverage**\]|
 |-t, --threshold|STR|Replication threshold method \[value, **auto**, percent\]|
-|-v, --value|Float|Explicit replication threshold value \[1.0\]|
-|-p, --percent|Float|Replication percent cut \[2.0\]|
+|-v, --value|Float|Explicit replication threshold value \[1.0\] when using `-t value`|
+|--prep|Float|Remove the lowest \[2.0\]% of singal as noise when using `-t percent`|
 |-S,--scope|STR|Replication scope \[**chromosome**, genome\]|
 |-c, --classifier|STR|Segmentation classification method \[binary, **proportion**\]|
-|-R, --remove|STR|Outlying data to remove \[none, sqrtGamma, lognGamma, **norm**, whiskers\]|
+|-R, --remove|STR|Outlying data to remove \[none, sqrtGamma, lognGamma, **norm**, whiskers, percentile\]|
+|--pcut|FLOAT|Remove the upper and lower [2.5]% of the data when using `-R percentile`|
 |--log| |Apply log transform to sequenceability ratio|
 |-f, --force| |Force the re-generation of all files|
 |--plot| |Plot Statistics|
@@ -132,6 +141,7 @@ To demonstrate the general applicability of repliscan we demonstrate its usage o
 - samtools
 - bwa
 - python
+- [wavelets](http://staff.washington.edu/dbp/WMTSA/NEPH/wavelets.html)
 - repliscan
 
 ### Lubelsky et al.
@@ -139,8 +149,6 @@ To demonstrate the general applicability of repliscan we demonstrate its usage o
 The continuous, LOESS smoothed results of [Lubelsky et al.](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC4079966/) were replicated and also run with Repliscan. These methods can be replicated by downloading the following files:
 
 - [README.txt](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/README.txt)
-- [input_2S.txt](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/input_2S.txt)
-- [input_4S.txt](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/input_4S.txt)
 - [lubelsky2014.csv](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/lubelsky2014.csv)
 - [replicate_continuous.sh](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/lubelsky2014_replicate/replicate_continuous.sh)
 
