@@ -7,12 +7,12 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.cm as cm
-from itertools import izip_longest
+from itertools import izip_longest, compress
 from operator import itemgetter
 
 def main():
 	parser = argparse.ArgumentParser(description="Finds the timing differences between two segmentation profiles.")
-	parser.add_argument("-d",metavar="INT", help="Minimum distance to be RAT (Default: %(default)s)", default=1, type=int)
+	parser.add_argument("-d",metavar="FLOAT", help="Minimum distance to be RAT (Default: %(default)s)", default=0.5, type=float)
 	parser.add_argument("-S",metavar="INT", help="Tile Size (Default: %(default)s)", default=1000, type=int)
 	parser.add_argument("-A",metavar="GFF3", help="First Segmentation Profile (mitotic)", required=True)
 	parser.add_argument("-B",metavar="GFF3", help="Second Segmentation Profile (endo)", required=True)
@@ -86,14 +86,24 @@ def compareGenomes(A, B, chromDict, minD, tileSize, statsFlag, figExt):
 					else:
 						s = oldRec[0]*tileSize
 						e = min(chromDict[chrom], oldRec[1]*tileSize)
-						yield("%s\t%i\t%i\t%i"%(chrom, s, e, oldRec[2]))
+						#yield("%s\t%i\t%i\t%i"%(chrom, s, e, oldRec[2]))
+						strA = toSTR(chromMA[index])
+						strB = toSTR(chromMB[index])
+						imA = np.mean(np.where(chromMA[index]))
+						imB = np.mean(np.where(chromMB[index]))
+						yield("%s\t%i\t%i\t%i\t%s\t%s\t%.1f\t%.1f"%(chrom, s, e, oldRec[2],strA, strB, imA, imB))
 						oldRec = [index, index+1, displacement]
 				else:
 					oldRec = [index, index+1, displacement]
 		if oldRec:
 			s = oldRec[0]*tileSize
 			e = min(chromDict[chrom], oldRec[1]*tileSize)
-			yield("%s\t%i\t%i\t%i"%(chrom, s, e, oldRec[2]))
+			#yield("%s\t%i\t%i\t%i"%(chrom, s, e, oldRec[2]))
+			strA = toSTR(chromMA[index])
+			strB = toSTR(chromMB[index])
+			imA = np.mean(np.where(chromMA[index]))
+			imB = np.mean(np.where(chromMB[index]))
+			yield("%s\t%i\t%i\t%i\t%s\t%s\t%.1f\t%.1f"%(chrom, s, e, oldRec[2],strA, strB, imA, imB))
 	if statsFlag:
 		fig.text(0.03, 0.5, "Chromosome", va='center', ha='center', rotation='vertical')
 		cb1 = matplotlib.colorbar.ColorbarBase(axes[-1], cmap=plt.get_cmap("RdBu"), norm=matplotlib.colors.Normalize(vmin=-3, vmax=3), orientation='horizontal')
@@ -140,6 +150,15 @@ def toBA(name):
 	array([False,  True,  True], dtype=bool)
 	'''
 	return np.array([N in name for N in nameList], dtype=np.bool)
+
+def toSTR(BA):
+	'''
+	>>> toBA('ESMS')
+	array([ True,  True, False], dtype=bool)
+	>>> toBA('MSLS')
+	array([False,  True,  True], dtype=bool)
+	'''
+	return ''.join(compress(nameList, BA))
 
 def plotVars(names):
 	global nameList
