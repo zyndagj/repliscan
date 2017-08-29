@@ -21,6 +21,7 @@ def main():
 	parser.add_argument("-O",metavar="BEDG", help="Output to bedgraph file", default=sys.stdout)
 	parser.add_argument("--stats", action="store_true", help="Generate stats and figures")
 	parser.add_argument("--fig",metavar="EXT", help="Figure type (Default: %(default)s)", default="pdf", type=str)
+	parser.add_argument("--diff", action="store_true", help="Print fraction different and exit")
 	args = parser.parse_args()
 	if os.path.splitext(args.F)[1] in ['.fasta','.fa']:
 		fai = args.F+'.fai'
@@ -31,10 +32,19 @@ def main():
 		sys.exit("Please specify an output bedgraph so stats are not hidden")
 	chromDict = readFAI(fai)
 	plotVars(args.T)
+	sortedChroms = sorted(chromDict.keys())
 	genomeA = processGenome(chromDict, args.S, args.A, args.stats, args.fig)
 	genomeB = processGenome(chromDict, args.S, args.B, args.stats, args.fig)
-	OF = open(args.O,'w')
-	sortedChroms = sorted(chromDict.keys())
+	T, TD = (0.0, 0.0)
+	for chrom in sortedChroms:
+		pd, nd, n = proportionDifferent(genomeA[chrom], genomeB[chrom], args.d)
+		T += n
+		TD += nd
+		print "%s\t%.5f"%(chrom, pd)
+	print "Genome:\t%.5f"%(TD/T)
+	if args.simple: return 0
+	OF = open(args.O,'w',1000000)
+	OF.write('Chromosome\tstart\tend\tdistance\tA\tB\tindex-m_A\tindex-m_B\n')
 	X = [[] for i in xrange(len(sortedChroms))]
 	if args.stats:
 		for record in compareGenomes(genomeA, genomeB, chromDict, args.d, args.S, args.stats, args.fig):
@@ -54,60 +64,70 @@ def main():
 			OF.write(record+'\n')
 	OF.close()
 
+def helper(args):
+	a,b,diff_thresh = args
+	return abs(dist(a,b)) >= diff_thresh
+def proportionDifferent(A, B, diff_thresh):
+	'''
+	>>> proportionDifferent([1,1,1],[1,1,1])
+	(0.0, 0, 3)
+	>>> proportionDifferent([1,1,0,0],[1,1,1,1])
+	(0.5, 2, 4)
+	>>> proportionDifferent([1,1,0,0],[1,1,1])
+	Traceback (most recent call last):
+		...
+	AssertionError
+	'''
+	assert(len(A) == len(B))
+	from multiprocessing import Pool
+	from itertools import izip, repeat
+	p = Pool()
+	numDifferent = sum(p.imap_unordered(helper, izip(A,B,repeat(diff_thresh,len(A))), 1000))
+	return float(numDifferent)/len(A), numDifferent, len(A)
+
 def compareGenomes(A, B, chromDict, minD, tileSize, statsFlag, figExt):
 	sortedChroms = sorted(chromDict.keys()[:])
 	if statsFlag:
 		fig, axes = plt.subplots(nrows=len(sortedChroms)+1)
 		fig.subplots_adjust(top=0.95, bottom=0.05, left=0.07, right=0.97)
 		axes[0].set_title("RAT Heatmap")
+		# Calculate the maximum differential in the heatmap
+		numberTimes = len(nameList)
+		distMax=numberTimes-1
 	for chrom, ax in zip(sortedChroms, axes):
 		chromMA = A[chrom]
 		chromMB = B[chrom]
-		disps = map(dist, chromMA, chromMB)
+		dists = map(dist, chromMA, chromMB)
+		#disps = map(abs, dists)
 		if statsFlag:
 			if len(chromMA) < 600:
-				Y = np.array([np.nanmean(i) for i in grouper(disps, np.ceil(len(disps)/30.0), fillvalue=0.0)])
+				Y = np.array([np.nanmean(i) for i in grouper(dists, int(np.ceil(len(dists)/30.0)), fillvalue=0.0)])
 			else:
-				Y = np.array([np.nanmean(i) for i in grouper(disps, np.ceil(len(chromMA)/600.0), fillvalue=0.0)])
+				Y = np.array([np.nanmean(i) for i in grouper(dists, int(np.ceil(len(chromMA)/600.0)), fillvalue=0.0)])
 			Y = np.vstack((Y,Y))
-			ax.imshow(Y, aspect='auto', cmap=plt.get_cmap("RdBu"), interpolation='nearest', vmin=-3, vmax=3)
+			ax.imshow(Y, aspect='auto', cmap=plt.get_cmap("RdBu"), interpolation='nearest', vmin=-distMax, vmax=distMax)
 			pos = list(ax.get_position().bounds)
 			x_text = pos[0]-0.01
 			y_text = pos[1] + pos[3]/2.0
 			fig.text(x_text, y_text, chrom, va='center', ha='right', fontsize=10)
 			ax.set_axis_off()
-		oldRec = False
-		for index in xrange(chromMA.shape[0]):
-			displacement = disps[index]
-			if abs(displacement) >= minD:
-				if oldRec:
-					if index == oldRec[1] and displacement == oldRec[2]:
-						oldRec[1] = index+1
-					else:
-						s = oldRec[0]*tileSize
-						e = min(chromDict[chrom], oldRec[1]*tileSize)
-						#yield("%s\t%i\t%i\t%i"%(chrom, s, e, oldRec[2]))
-						strA = toSTR(chromMA[index])
-						strB = toSTR(chromMB[index])
-						imA = np.mean(np.where(chromMA[index]))
-						imB = np.mean(np.where(chromMB[index]))
-						yield("%s\t%i\t%i\t%i\t%s\t%s\t%.1f\t%.1f"%(chrom, s, e, oldRec[2],strA, strB, imA, imB))
-						oldRec = [index, index+1, displacement]
-				else:
-					oldRec = [index, index+1, displacement]
-		if oldRec:
-			s = oldRec[0]*tileSize
-			e = min(chromDict[chrom], oldRec[1]*tileSize)
-			#yield("%s\t%i\t%i\t%i"%(chrom, s, e, oldRec[2]))
+		for index in np.where(np.absolute(dists) >= minD)[0]:
+			s = index*tileSize
+			e = s+tileSize
 			strA = toSTR(chromMA[index])
 			strB = toSTR(chromMB[index])
-			imA = np.mean(np.where(chromMA[index]))
-			imB = np.mean(np.where(chromMB[index]))
-			yield("%s\t%i\t%i\t%i\t%s\t%s\t%.1f\t%.1f"%(chrom, s, e, oldRec[2],strA, strB, imA, imB))
+			imA = indexMean(chromMA[index])
+			imB = indexMean(chromMB[index])
+			yield("%s\t%i\t%i\t%.2f\t%s\t%s\t%.1f\t%.1f"%(chrom, s, e, dists[index], strA, strB, imA, imB))
 	if statsFlag:
 		fig.text(0.03, 0.5, "Chromosome", va='center', ha='center', rotation='vertical')
-		cb1 = matplotlib.colorbar.ColorbarBase(axes[-1], cmap=plt.get_cmap("RdBu"), norm=matplotlib.colors.Normalize(vmin=-3, vmax=3), orientation='horizontal')
+		cb1 = matplotlib.colorbar.ColorbarBase(axes[-1], cmap=plt.get_cmap("RdBu"), norm=matplotlib.colors.Normalize(vmin=-distMax, vmax=distMax), orientation='horizontal')
 		plt.savefig("RAT Plot."+figExt)
+
+def indexMean(BA):
+	if not np.any(BA):
+		return -1
+	return np.mean(np.where(BA))
 
 def grouper(iterable, n, fillvalue=None):
 	"Collect data into fixed-length chunks or blocks"
@@ -124,8 +144,8 @@ def updateGenomeStruct(genome, gff, tileSize, chromDict, statsFlag, figExt):
 	def process(location, name, tileSize):
 		chrom, start, end = location
 		binArray = toBA(name)
-		sI = np.ceil(start/tileSize)
-		eI = np.ceil(end/float(tileSize))
+		sI = int(np.ceil(start/tileSize))
+		eI = int(np.ceil(end/float(tileSize)))
 		return (chrom, binArray, sI, eI)
 	if statsFlag:
 		segments = {chrom:[] for chrom in chromDict.keys()}
@@ -158,6 +178,8 @@ def toSTR(BA):
 	>>> toBA('MSLS')
 	array([False,  True,  True], dtype=bool)
 	'''
+	if not np.any(BA):
+		return 'NA'
 	return ''.join(compress(nameList, BA))
 
 def plotVars(names):
@@ -271,7 +293,7 @@ def lineParser(line):
 def makeGenomeStruct(chromDict, tileSize):
 	genome = {}
 	for chrom, chromLen in chromDict.iteritems():
-		numBins = np.ceil(chromLen/tileSize)
+		numBins = int(np.ceil(chromLen/tileSize))
 		genome[chrom] = np.zeros((numBins, 3), dtype=np.bool)
 	return genome
 
