@@ -42,7 +42,7 @@ def main():
 		TD += nd
 		print "%s\t%.5f"%(chrom, pd)
 	print "Genome:\t%.5f"%(TD/T)
-	if args.simple: return 0
+	if args.diff: return 0
 	OF = open(args.O,'w',1000000)
 	OF.write('Chromosome\tstart\tend\tdistance\tA\tB\tindex-m_A\tindex-m_B\n')
 	X = [[] for i in xrange(len(sortedChroms))]
@@ -81,8 +81,10 @@ def proportionDifferent(A, B, diff_thresh):
 	assert(len(A) == len(B))
 	from multiprocessing import Pool
 	from itertools import izip, repeat
-	p = Pool()
+	p = Pool(processes=4)
 	numDifferent = sum(p.imap_unordered(helper, izip(A,B,repeat(diff_thresh,len(A))), 1000))
+	p.close()
+	p.join()
 	return float(numDifferent)/len(A), numDifferent, len(A)
 
 def compareGenomes(A, B, chromDict, minD, tileSize, statsFlag, figExt):
@@ -151,16 +153,18 @@ def updateGenomeStruct(genome, gff, tileSize, chromDict, statsFlag, figExt):
 		segments = {chrom:[] for chrom in chromDict.keys()}
 		for location, name in fileReader(gff):
 			chrom, binArray, sI, eI = process(location, name, tileSize)
-			genome[chrom][sI:eI] = binArray
-			arrayStr =  ''.join(map(lambda x: str(int(x)), binArray))
-			segments[chrom].append((arrayStr, eI-sI))
+			if chrom in chromDict:
+				genome[chrom][sI:eI] = binArray
+				arrayStr =  ''.join(map(lambda x: str(int(x)), binArray))
+				segments[chrom].append((arrayStr, eI-sI))
 		title = os.path.splitext(os.path.split(gff)[1])[0]
 		plotSize(segments, title, tileSize, figExt)
 		plotComp(segments, title, tileSize, chromDict, figExt)
 	else:
 		for location, name in fileReader(gff):
 			chrom, binArray, sI, eI = process(location, name, tileSize)
-			genome[chrom][sI:eI] = binArray
+			if chrom in chromDict:
+				genome[chrom][sI:eI] = binArray
 
 def toBA(name):
 	'''
@@ -259,8 +263,11 @@ def plotSize(segments, title, tileSize, figExt):
 	print "%s Size Distribution"%(title)
 	print "%-6s %10s %10s %10s %10s %10s %10s"%("","min","1st-Q","median","3rd-Q","max",'count')
 	for segment, xIndex in zip(labels, range(len(labels))):
-		fiveSum = fivenum(X[xIndex]) # (min, 1st-Q, median, 3rd-Q, max)
-		args = (segment,)+fiveSum+(len(X[xIndex]),)
+		try:
+			fiveSum = fivenum(X[xIndex]) # (min, 1st-Q, median, 3rd-Q, max)
+			args = (segment,)+fiveSum+(len(X[xIndex]),)
+		except:
+			args = (segment,)+(0,0,0,0,0,0)
 		print "%-6s %10.1f %10.1f %10.1f %10.1f %10.1f %10i"%args
 	plt.figure()
 	plt.boxplot(X, labels=labels, showfliers=False)
