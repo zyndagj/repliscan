@@ -44,7 +44,7 @@ def main():
 	print "Genome:\t%.5f"%(TD/T)
 	if args.diff: return 0
 	OF = open(args.O,'w',1000000)
-	OF.write('Chromosome\tstart\tend\tdistance\tA\tB\tindex-m_A\tindex-m_B\n')
+	OF.write('#Chromosome\tstart\tend\tdistance\tA\tB\tindex-m_A\tindex-m_B\n')
 	X = [[] for i in xrange(len(sortedChroms))]
 	if args.stats:
 		for record in compareGenomes(genomeA, genomeB, chromDict, args.d, args.S, args.stats, args.fig):
