@@ -171,3 +171,52 @@ The whole-genme replicating timing profile of [Hansen et al.](https://www.ncbi.n
 These results can also be immediately viewed by downloading and loading this pre-generated IGV session. Please right-click and "save as", and then "Open [the] session" in IGV.
 
 [hansen_hg19_IGV.xml](https://de.cyverse.org/anon-files/iplant/home/gzynda/public/hansen2010_replicate/hansen_hg19_IGV.xml)
+
+## Helper Scripts
+
+As our lab continues to utilize Repliscan for our analyses, we have developed scripts to aid subsequent analysis.
+
+### Comparing replication between experiments
+
+Highlights **R**egions of **A**ltered **T**iming betwen replican experiments of the same genome.
+
+```
+usage: RATrap.py [-h] [-d FLOAT] [-S INT] -A GFF3 -B GFF3 [-T STR] -F FASTA
+                 [-O BEDG] [--stats] [--fig EXT] [--diff]
+
+Finds the timing differences between two segmentation profiles.
+
+optional arguments:
+  -h, --help  show this help message and exit
+  -d FLOAT    Minimum distance to be RAT (Default: 0.5)
+  -S INT      Tile Size (Default: 1000)
+  -A GFF3     First Segmentation Profile (mitotic)
+  -B GFF3     Second Segmentation Profile (endo)
+  -T STR      Times (Default: ES,MS,LS)
+  -F FASTA    Reference
+  -O BEDG     Output to bedgraph file
+  --stats     Generate stats and figures
+  --fig EXT   Figure type (Default: pdf)
+  --diff      Print fraction different and exit
+```
+
+### Merging regions of alterted timing
+
+Merges output from `RATrap.py` to simplify interpretation.
+
+```
+usage: mergeRATs.py [-h] [-z INT] [-d FLOAT] [--same] [--greedy] BEDG
+
+Merge RATs from RATrap output
+
+positional arguments:
+  BEDG        RATrap.py output bedgraph
+
+optional arguments:
+  -h, --help  show this help message and exit
+  -z INT      Merge regions separated by [0] bp of zero diff
+  -d FLOAT    Differences in the same +/- direction that are smaller than '-d'
+              will be merged [0.0]
+  --same      Only merge regions of the same time classification
+  --greedy    Merge small regions into larger ones
+```
