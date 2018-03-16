@@ -77,10 +77,10 @@ Methods to handle replicates:
 		"Segmentation classification method (binary|proportion) (Default: %(default)s)", default=\
 		"proportion", type=argChecker(('binary','proportion'),'segmentation method').check)
 	parser.add_argument("-R", "--remove", metavar="STR", help=\
-		"Outlying data to remove (none|lognGamma|sqrtGamma|norm|whiskers|percentile) (Default: %(default)s)", default=\
+		"Distribution used to fit replication coverage (none|lognGamma|sqrtGamma|norm|whiskers|percentile) (Default: %(default)s)", default=\
 		"norm", type=argChecker(("none","lognGamma","sqrtGamma","norm","whiskers","percentile"), "outlying method").check)
 	parser.add_argument("--pcut", metavar='FLOAT', help=\
-		"Remove the upper and lower [%(default)s]%% of the data when using '-R percentile'", default=2.5, type=float)
+		"Removes data beyond the [%(default)s]%% of the data in each '-R' distribution. Accepts a single percent for symmetric bounds or two floats separted by a dash", default="2.5-97.5", type=str)
 	parser.add_argument("--log", action="store_true", help=\
 		"Apply log transform to sequenceability ratio (Default: False)")
 	parser.add_argument("-f","--force", action="store_true",\
@@ -92,6 +92,16 @@ Methods to handle replicates:
 		fai = args.ref+'.fai'
 	else:
 		sys.exit("Please specify a fasta file\n")
+	# parse and check pcut variables
+	if "-" in args.pcut:
+		plow, phigh = map(float, args.pcut.split('-'))
+	else:
+		plow, phigh = float(args.pcut), 100.0-float(args.pcut)
+	assert plow >= 0.0 and plow <= 100.0
+	assert phigh >= 0.0 and phigh <= 100.0
+	pLow = plow/100.0
+	pHigh = phigh/100.0
+	assert pLow <= pHigh
 	# Set force variable
 	global force
 	force = args.force
@@ -102,8 +112,7 @@ Methods to handle replicates:
 	#####################################################
 	# Convert BAMs to Bedgraph files
 	#####################################################
-	#L, normVals = makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), args.norm, args.remove, args.plot)
-	L, normVals = makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), 'Coverage', args.remove, args.plot, args.pcut)
+	L, normVals = makeBedgraph(fList, args.ref, args.window, args.aggregate.lower(), 'Coverage', args.remove, args.plot, pLow, pHigh)
 	#####################################################
 	# Calculate replication ratio
 	#####################################################
@@ -130,11 +139,11 @@ def normalizer(method, vals):
 	Normalization superfunction.
 
 	>>> normalizer('Coverage',np.ones(6).reshape(2,3))
-	Normalizing signales using Coverage
+	Normalizing signals using Coverage
 	array([[ 1.,  1.,  1.],
 	       [ 1.,  1.,  1.]])
 	>>> np.round(normalizer('DESeq',np.array([[1,2,3],[4,5,6]])),2)
-	Normalizing signales using DESeq
+	Normalizing signals using DESeq
 	array([[ 1.58,  3.16,  4.74],
 	       [ 2.53,  3.16,  3.79]])
 	'''
@@ -190,7 +199,7 @@ def normalizer(method, vals):
 		return nA
 	D = {'DESeq':DENormalize, 'Coverage':covNorm}
 	if method in D:
-		print "Normalizing signales using %s"%(method)
+		print "Normalizing signals using %s"%(method)
 		return D[method](vals)
 	else:
 		sys.exit("%s is not a valid normalization method."%(normMethod))
@@ -225,27 +234,27 @@ def run_logFC(fList, useLog, L, normVals):# thresh=2.5):
 				OF.write(outStr)
 			OF.close()
 
-def removeOutlying(vals, names, plotCoverage, method, pOut):
+def removeOutlying(vals, names, plotCoverage, method, pLow, pHigh):
 	'''
 	Removes outlying coverage values from the vals matrix in-place.
 	'''
 	if method == 'none': return
 	func = {'norm':calcNorm, 'sqrtGamma':sqrtGamma, 'whiskers':calcWhisk, 'lognGamma':lognGamma, 'percentile':calcPercentile}
 	N = len(names)
-	p = Pool(min((cpu_count(), N)))
-	cuts = p.map(func[method], zip(vals, names, [plotCoverage]*N, [pOut]*N))
-	p.close()
-	p.join()
+	# Calculate outling coverage in the control
+	cuts = func[method]((vals[0], names[0], plotCoverage, pLow, pHigh))
+	assert cuts[0] <= cuts[1]
+	# Remove data from all times where control data was removed
 	for i in range(N):
-		vals[i,vals[i,:] < cuts[i][0]] = 0
-		vals[i,vals[i,:] > cuts[i][1]] = 0
+		# Use G1 as the index
+		vals[i,vals[0,:] < cuts[0]] = 0.0
+		vals[i,vals[0,:] > cuts[1]] = 0.0
 def lognGamma(argList):
-	V, name, plotCoverage, pOut = argList
-	cut = 0.05
-	lowerP, upperP = cut/2.0, 1.0-cut/2.0
+	V, name, plotCoverage, pLow, pHigh = argList
 	transV = np.log(V[V > 0])
 	fits = ss.gamma.fit(transV)
-	lowerCut, upperCut = ss.gamma.ppf([lowerP, upperP], *fits)
+	# pLow and pHigh should be <= 1.0
+	lowerCut, upperCut = ss.gamma.ppf([pLow, pHigh], *fits)
 	if plotCoverage:
 		plt.figure(figsize=(10,3))
 		X = plotCut(transV, name, lowerCut, upperCut)
@@ -262,11 +271,11 @@ def plotCut(V, name, lowerCut, upperCut):
 	plt.ylim(0,maxY)
 	X = np.arange(minV, maxV+0.1, 0.1)
 	plt.fill_between(X, 0, maxY, where=np.logical_or(X<lowerCut, X>upperCut), color='gray', alpha=0.6)
-	plt.title("%s Coverage Cut"%(name))
+	plt.title("%s Coverage Cut [%.2f, %.2f]"%(name, lowerCut, upperCut))
 	plt.ylabel("Fraction of Reads")
 	return X
 def calcWhisk(argList):
-	V, name, plotCoverage, pOut = argList
+	V, name, plotCoverage, pLow, pHigh = argList
 	transV = np.log(V[V > 0])
 	q1, q3 = np.percentile(transV, (25,75))
 	iqr = q3-q1
@@ -280,9 +289,10 @@ def calcWhisk(argList):
 		plt.savefig('%s_coverage_cut.png'%(name))
 	return np.exp((lWhisk, uWhisk))
 def calcPercentile(argList):
-	V, name, plotCoverage, pOut = argList
+	V, name, plotCoverage, pLow, pHigh = argList
 	transV = np.log(V[V > 0])
-	q1, q3 = np.percentile(transV, (pOut, 1-pOut))
+	# pLow and pHigh should be <= 1.0
+	q1, q3 = np.percentile(transV, (pLow, pHigh))
 	if plotCoverage:
 		plt.figure(figsize=(10,3))
 		X = plotCut(transV, name, q1, q3)
@@ -291,17 +301,20 @@ def calcPercentile(argList):
 		plt.savefig('%s_coverage_cut.png'%(name))
 	return np.exp((q1, q3))
 def sqrtGamma(argList):
-	V, name, plotCoverage, pOut = argList
+	V, name, plotCoverage, pLow, pHigh = argList
+	# sqrt transform the data
 	transV = np.sqrt(V)
+	# Select out the middle bulk of the data
 	q1, q3 = np.percentile(transV, (25,75))
 	iqr = q3-q1
 	lWhisk = q1-1.5*iqr
 	uWhisk = q3+1.5*iqr
-	lP, uP = 0.025, 0.975
 	transV = transV[transV < uWhisk]
 	transV = transV[transV > lWhisk]
+	# Fit a gamma distribution to the middle bulk
 	fits = ss.gamma.fit(transV)
-	lowerCut, upperCut = ss.gamma.ppf([lP, uP], *fits)
+	# Find the predicted quantiles of percentiles
+	lowerCut, upperCut = ss.gamma.ppf([pLow, pHigh], *fits)
 	if plotCoverage:
 		plt.figure(figsize=(10,3))
 		X = plotCut(transV, name, lowerCut, upperCut)
@@ -312,12 +325,11 @@ def sqrtGamma(argList):
 		plt.savefig('%s_coverage_cut.png'%(name))
 	return np.power((lowerCut, upperCut), 2)
 def calcNorm(argList):
-	V, name, plotCoverage, pOut = argList
+	V, name, plotCoverage, pLow, pHigh = argList
 	transV = np.log(V[V > 0])
-	q1, q3 = np.percentile(transV, (25,75))
-	lP, uP = 0.025, 0.975
 	fits = ss.norm.fit(transV)
-	lowerCut, upperCut = ss.norm.ppf([lP, uP], *fits)
+	# pLow and pHigh should be <= 1.0
+	lowerCut, upperCut = ss.norm.ppf([pLow, pHigh], *fits)
 	if plotCoverage:
 		plt.figure(figsize=(10,3))
 		X = plotCut(transV, name, lowerCut, upperCut)
@@ -478,7 +490,7 @@ def runPool(func, args):
 	p.join()
 	return ret
 
-def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCoverage, pOut):
+def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCoverage, pLow, pHigh):
 	def normBGs(files, normMethod):
 		L, vals = processFiles(files)
 		normVals = normalizer(normMethod, vals)
@@ -520,13 +532,17 @@ def makeBedgraph(fList, fasta, size, aggMethod, normMethod, removeWhat, plotCove
 	# Aggregate replicates
 	##########################################
 	print "Aggregating replicates"
-	prefixList = runPool(agregate, [(bams, prefix, faiBed, aggMethod) for bams, prefix in fList])
+	ret = runPool(agregate, [(bams, prefix, faiBed, aggMethod) for bams, prefix in fList])
+	prefixList = map(lambda x: x[0], ret)
+	for i in map(lambda x: x[1], ret):
+		if i:
+			print i
 	L, vals = processFiles(prefixList)
 	##########################################
 	# Remove outlying coverage
 	##########################################
 	times = map(lambda y: y[1], fList)
-	removeOutlying(vals, times, plotCoverage, removeWhat, pOut)
+	removeOutlying(vals, times, plotCoverage, removeWhat, pLow, pHigh)
 	##########################################
 	# Normalized agregated files
 	##########################################
@@ -568,6 +584,7 @@ def agregate(argList):
 	'''
 	bams, prefix, faiBed, method = argList
 	finalBG = '%s.bedgraph'%(prefix)
+	retStr = ""
 	if method == 'sum':
 		bgs = ['%s.bedgraph'%(os.path.splitext(bam)[0]) for bam in bams]
 	else:
@@ -576,11 +593,11 @@ def agregate(argList):
 		if len(bgs) == 1:
 			os.system('ln -fs %s %s'%(bgs[0], finalBG))
 		else:
-			print "Merging with %s\n- "%(method)+'\n- '.join(bgs)
+			retStr = "Merging with %s\n- "%(method)+'\n- '.join(bgs)
 			bgStr = ' '.join(bgs)
 			mapStr = "export LC_ALL=C; sort -m -S 1G -k1,1 -k2,2n %s | bedtools map -a %s -b - -c 4 -o %s > %s"%(bgStr, faiBed, method, finalBG)
 			os.system(mapStr)
-	return finalBG
+	return (finalBG, retStr)
 
 def parseLocations(chroms):
 	'''
